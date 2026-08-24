@@ -8,8 +8,13 @@ authors = [
     { name = "Sanjeev Sankar J" }
 ]
 dependencies = [
-    "fastapi>=0.141,<0.142",
-    "uvicorn[standard]>=0.52,<0.53",
+    "alembic>=1.16,<2.0",
+    "fastapi>=0.141,<1.0",
+    "psycopg[binary]>=3.3,<4.0",
+    "pydantic-settings>=2.0,<3.0",
+    "pypdf>=5,<7",
+    "sqlalchemy>=2.0,<3.0",
+    "uvicorn>=0.52,<1.0",
 ]
 
 [dependency-groups]
@@ -38,6 +43,9 @@ select = [
     "UP",
     "B"
 ]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [build-system]
 requires = ["setuptools>=68"]
