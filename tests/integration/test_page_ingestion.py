@@ -2,16 +2,16 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
 from app.core.database import async_session_factory
+from app.core.models import DocumentPage
 from app.ingestion.loaders.markdown import MarkdownLoader
 from app.ingestion.service import IngestionService
 
 
 @pytest.mark.asyncio
-async def test_ingestion_service_deduplicates_content(
-    tmp_path: Path,
-) -> None:
+async def test_ingest_file_persists_pages(tmp_path: Path) -> None:
     document_path = tmp_path / "research.md"
 
     document_path.write_text(
@@ -22,25 +22,30 @@ async def test_ingestion_service_deduplicates_content(
     async with async_session_factory() as session:
         service = IngestionService(session)
 
-        first_document = await service.ingest_file(
+        document = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
-            title="Test Research Paper",
+            title="RAG Research",
             document_type="research_paper",
             source="integration-test",
         )
+
         await session.commit()
 
-        second_document = await service.ingest_file(
-            path=document_path,
-            loader=MarkdownLoader(),
-            title="Test Research Paper",
-            document_type="research_paper",
-            source="integration-test",
+        
+        result = await session.execute(
+            select(DocumentPage).where(
+                DocumentPage.document_id == document.id
+            )
         )
-        await session.commit()
 
-        assert first_document.id == second_document.id
+        page = result.scalar_one()
+        
 
-        await session.delete(first_document)
+        assert page is not None
+        assert page.document_id == document.id
+        assert page.page_number == 1
+        assert "Retrieval-Augmented Generation" in page.content
+
+        await session.delete(document)
         await session.commit()

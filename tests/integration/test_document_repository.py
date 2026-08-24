@@ -1,3 +1,4 @@
+import uuid
 from uuid import uuid4
 
 import pytest
@@ -15,7 +16,7 @@ async def test_document_persistence() -> None:
         authors="Test Author",
         source="integration-test",
         document_type="research_paper",
-        content_hash="test-document-hash-001",
+        content_hash=f"test-document-hash-{uuid.uuid4()}",
         document_metadata={"topic": "rag"},
     )
 

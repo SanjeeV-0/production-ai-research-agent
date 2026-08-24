@@ -18,11 +18,20 @@ async def test_ingest_document_deduplicates_content() -> None:
     async with async_session_factory() as session:
         service = DocumentService(session)
 
-        first_document = await service.ingest_document(document_input)
+        first_document, first_created = await service.ingest_document(
+    document_input
+)
         await session.commit()
 
-        second_document = await service.ingest_document(document_input)
+        second_document, second_created = await service.ingest_document(
+    document_input
+)
+
+
         await session.commit()
+        assert first_created is True
+        assert second_created is False
+        
 
         assert first_document.id == second_document.id
 

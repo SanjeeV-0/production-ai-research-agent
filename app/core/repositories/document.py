@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import Document
+from app.core.models import Document, DocumentPage
 
 
 class DocumentRepository:
@@ -31,3 +31,10 @@ class DocumentRepository:
         await self.session.flush()
 
         return document
+
+    async def create_page(self, page: DocumentPage) -> DocumentPage:
+        """Persist an extracted document page."""
+        self.session.add(page)
+        await self.session.flush()
+
+        return page

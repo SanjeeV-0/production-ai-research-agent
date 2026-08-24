@@ -10,9 +10,13 @@ def test_pdf_loader_reads_pdf(tmp_path: Path) -> None:
 
     writer = PdfWriter()
     writer.add_blank_page(width=612, height=792)
+
     with pdf_path.open("wb") as file:
         writer.write(file)
 
     loader = PDFLoader()
+    pages = loader.load(pdf_path)
 
-    assert loader.load(pdf_path) == ""
+    assert len(pages) == 1
+    assert pages[0].page_number == 1
+    assert pages[0].content == ""
