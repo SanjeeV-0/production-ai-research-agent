@@ -1,11 +1,44 @@
+import logging
+
 from fastapi import FastAPI
 
+from app.config.settings import get_settings
+from app.core.database_health import check_database_connection
+from app.core.logging import configure_logging
+
+configure_logging()
+
+settings = get_settings()
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
-    title="Production AI Research & Knowledge Agent",
-    version="0.1.0",
+    title=settings.app_name,
+    version=settings.app_version,
 )
+
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    logger.info("Application started")
 
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
-    return {"status": "healthy"}
+    logger.info("Health check requested")
+
+    return {
+        "status": "healthy",
+        "environment": settings.environment,
+    }
+
+@app.get("/health/ready")
+async def readiness_check() -> dict[str, object]:
+    database_healthy = await check_database_connection()
+
+    return {
+        "status": "ready" if database_healthy else "not_ready",
+        "checks": {
+            "database": database_healthy,
+        },
+    }
