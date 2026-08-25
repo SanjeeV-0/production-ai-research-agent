@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.core.models import DocumentPage
+from app.embeddings.testing import DeterministicEmbeddingProvider
 from app.ingestion.loaders.markdown import MarkdownLoader
 from app.ingestion.service import IngestionService
 
@@ -20,7 +21,10 @@ async def test_ingest_file_persists_pages(tmp_path: Path) -> None:
 )
 
     async with async_session_factory() as session:
-        service = IngestionService(session)
+        service = IngestionService(
+    session,
+    embedding_provider=DeterministicEmbeddingProvider(),
+)
 
         document = await service.ingest_file(
             path=document_path,

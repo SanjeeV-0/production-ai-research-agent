@@ -24,14 +24,14 @@ class ChunkService:
 
         for chunk in chunks:
             document_chunk = DocumentChunk(
-    document_id=document_id,
-    section_id=chunk.section_id,
-    chunk_index=chunk.index,
-    content=chunk.content,
-    chunk_metadata={
-        "page_numbers": chunk.page_numbers,
-        "section_path": chunk.section_path,
-    },
+                document_id=document_id,
+                section_id=chunk.section_id,
+                chunk_index=chunk.index,
+                content=chunk.content,
+                chunk_metadata={
+                    "page_numbers": chunk.page_numbers,
+                    "section_path": chunk.section_path,
+                                },
 )
 
             await self.repository.create_chunk(document_chunk)
