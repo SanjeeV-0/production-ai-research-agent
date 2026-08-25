@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import Document, DocumentPage
+from app.core.models import ChunkPageMap, Document, DocumentChunk, DocumentPage
 
 
 class DocumentRepository:
@@ -38,3 +38,23 @@ class DocumentRepository:
         await self.session.flush()
 
         return page
+
+    async def create_chunk(
+    self,
+    chunk: DocumentChunk,
+    ) -> DocumentChunk:
+        """Persist a document chunk."""
+        self.session.add(chunk)
+        await self.session.flush()
+
+        return chunk 
+
+    async def create_chunk_page_mapping(
+    self,
+    mapping: ChunkPageMap,
+    ) -> ChunkPageMap:
+        """Persist a chunk-to-page mapping."""
+        self.session.add(mapping)
+        await self.session.flush()
+
+        return mapping  

@@ -78,6 +78,10 @@ class Document(Base):
     back_populates="document",
     cascade="all, delete-orphan",
 )
+    chunks: Mapped[list["DocumentChunk"]] = relationship(
+    back_populates="document",
+    cascade="all, delete-orphan",
+)
 
 class DocumentPage(Base):
     """Extracted page-level content belonging to a document."""
@@ -108,4 +112,74 @@ class DocumentPage(Base):
 
     document: Mapped["Document"] = relationship(
         back_populates="pages",
+    )
+    chunk_mappings: Mapped[list["ChunkPageMap"]] = relationship(
+    back_populates="document_page",
+    cascade="all, delete-orphan",
+)
+
+class DocumentChunk(Base):
+    """A searchable chunk derived from document content."""
+
+    __tablename__ = "document_chunks"
+
+    id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+
+    document_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    chunk_index: Mapped[int] = mapped_column(
+        nullable=False,
+    )
+
+    content: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    chunk_metadata: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    document: Mapped["Document"] = relationship(
+        back_populates="chunks",
+    )
+
+    page_mappings: Mapped[list["ChunkPageMap"]] = relationship(
+        back_populates="chunk",
+        cascade="all, delete-orphan",
+    )
+class ChunkPageMap(Base):
+    """Maps a document chunk to one of its source pages."""
+
+    __tablename__ = "chunk_page_map"
+
+    chunk_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_chunks.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    document_page_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_pages.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    chunk: Mapped["DocumentChunk"] = relationship(
+        back_populates="page_mappings",
+    )
+
+    document_page: Mapped["DocumentPage"] = relationship(
+        back_populates="chunk_mappings",
     )
