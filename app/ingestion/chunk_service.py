@@ -15,16 +15,18 @@ class ChunkService:
 
     async def persist_chunks(
         self,
-        document_id,
+        document_id: UUID,
+        section_id: UUID,
         page_ids: dict[int, UUID],
         chunks: list[TextChunk],
     ) -> list[DocumentChunk]:
-        """Persist chunks and map each chunk to its source pages."""
+        """Persist chunks and map them to source pages."""
         persisted_chunks: list[DocumentChunk] = []
 
         for chunk in chunks:
             document_chunk = DocumentChunk(
                 document_id=document_id,
+                section_id=section_id,
                 chunk_index=chunk.index,
                 content=chunk.content,
                 chunk_metadata={

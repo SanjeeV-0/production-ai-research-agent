@@ -82,6 +82,11 @@ class Document(Base):
     back_populates="document",
     cascade="all, delete-orphan",
 )
+    sections: Mapped[list["DocumentSection"]] = relationship(
+    back_populates="document",
+    cascade="all, delete-orphan",
+)
+
 
 class DocumentPage(Base):
     """Extracted page-level content belonging to a document."""
@@ -117,6 +122,77 @@ class DocumentPage(Base):
     back_populates="document_page",
     cascade="all, delete-orphan",
 )
+
+
+class DocumentSection(Base):
+    """Logical section within a document."""
+
+    __tablename__ = "document_sections"
+
+    id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+
+    document_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    parent_section_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_sections.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    title: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
+
+    section_path: Mapped[str] = mapped_column(
+        String(2000),
+        nullable=False,
+    )
+
+    section_level: Mapped[int] = mapped_column(
+        nullable=False,
+    )
+
+    section_index: Mapped[int] = mapped_column(
+        nullable=False,
+    )
+
+    section_metadata: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    document: Mapped["Document"] = relationship(
+        back_populates="sections",
+    )
+
+    parent_section: Mapped["DocumentSection | None"] = relationship(
+        back_populates="child_sections",
+        remote_side="DocumentSection.id",
+    )
+
+    child_sections: Mapped[list["DocumentSection"]] = relationship(
+        back_populates="parent_section",
+        cascade="all, delete-orphan",
+    )
+
+    chunks: Mapped[list["DocumentChunk"]] = relationship(
+        back_populates="section",
+        cascade="all, delete-orphan",
+    )
+
+
 
 class DocumentChunk(Base):
     """A searchable chunk derived from document content."""
@@ -159,6 +235,17 @@ class DocumentChunk(Base):
         back_populates="chunk",
         cascade="all, delete-orphan",
     )
+    section_id: Mapped[UUID] = mapped_column(
+    PostgreSQLUUID(as_uuid=True),
+    ForeignKey("document_sections.id", ondelete="CASCADE"),
+    nullable=False,
+    index=True,
+)
+    section: Mapped["DocumentSection"] = relationship(
+    back_populates="chunks",
+)
+
+
 class ChunkPageMap(Base):
     """Maps a document chunk to one of its source pages."""
 
@@ -183,3 +270,4 @@ class ChunkPageMap(Base):
     document_page: Mapped["DocumentPage"] = relationship(
         back_populates="chunk_mappings",
     )
+   

@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.database import async_session_factory
-from app.core.models import ChunkPageMap, Document, DocumentPage
+from app.core.models import ChunkPageMap, Document, DocumentPage, DocumentSection
 from app.ingestion.chunk_service import ChunkService
 from app.ingestion.chunker import TextChunk
 
@@ -33,6 +33,17 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
             page_number=2,
             content="Page two content.",
         )
+        section = DocumentSection(
+            document_id=document.id,
+            title="Test Section",
+            section_path="Test Section",
+            section_level=1,
+            section_index=0,
+            section_metadata={},
+)
+
+        session.add(section)
+        await session.flush()
 
         session.add_all([page_one, page_two])
         await session.flush()
@@ -59,6 +70,7 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
 
         persisted_chunks = await service.persist_chunks(
             document_id=document.id,
+            section_id=section.id,
             page_ids=page_ids,
             chunks=chunks,
         )
