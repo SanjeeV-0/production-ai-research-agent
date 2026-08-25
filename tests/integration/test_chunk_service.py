@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.core.database import async_session_factory
 from app.core.models import ChunkPageMap, Document, DocumentPage, DocumentSection
 from app.ingestion.chunk_service import ChunkService
-from app.ingestion.chunker import TextChunk
+from app.ingestion.size_guard import ChildChunk
 
 
 @pytest.mark.asyncio
@@ -54,23 +54,30 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
         }
 
         chunks = [
-            TextChunk(
+            ChildChunk(
                 index=0,
                 content="Chunk from page one.",
                 page_numbers=[1],
+                section_id=section.id,
+                section_path="Test Section",
+                section_level=1,
+                source_units=(),
             ),
-            TextChunk(
+            ChildChunk(
                 index=1,
                 content="Chunk crossing pages.",
                 page_numbers=[1, 2],
+                section_id=section.id,
+                section_path="Test Section",
+                section_level=1,
+                source_units=(),
             ),
-        ]
+                    ]
 
         service = ChunkService(session)
 
         persisted_chunks = await service.persist_chunks(
             document_id=document.id,
-            section_id=section.id,
             page_ids=page_ids,
             chunks=chunks,
         )

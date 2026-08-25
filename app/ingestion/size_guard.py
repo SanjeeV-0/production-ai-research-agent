@@ -1,6 +1,8 @@
 import re
 from dataclasses import dataclass
+from uuid import UUID
 
+from app.ingestion.section_map import SectionMap
 from app.ingestion.semantic_shredder import SemanticUnit
 from app.ingestion.structure import StructuralUnit, UnitType
 
@@ -12,6 +14,7 @@ class ChildChunk:
     index: int
     content: str
     page_numbers: list[int]
+    section_id: UUID
     section_path: str
     section_level: int
     source_units: tuple[StructuralUnit, ...]
@@ -168,6 +171,7 @@ def _split_prose_unit(
 
 def apply_size_guard(
     semantic_units: list[SemanticUnit],
+    section_map: SectionMap,
     max_tokens: int,
 ) -> list[ChildChunk]:
     """
@@ -185,7 +189,7 @@ def apply_size_guard(
         raise ValueError(
             "max_tokens must be greater than zero"
         )
-
+        
     children: list[ChildChunk] = []
 
     for semantic_unit in semantic_units:
@@ -193,6 +197,9 @@ def apply_size_guard(
 
         if not content:
             continue
+        section_id = section_map.get(
+            semantic_unit.section_path
+        )
 
         if estimate_tokens(content) <= max_tokens:
             children.append(
@@ -200,6 +207,7 @@ def apply_size_guard(
                     index=len(children),
                     content=content,
                     page_numbers=semantic_unit.page_numbers,
+                    section_id=section_id,
                     section_path=semantic_unit.section_path,
                     section_level=semantic_unit.section_level,
                     source_units=semantic_unit.units,
@@ -222,13 +230,14 @@ def apply_size_guard(
             for piece in pieces:
                 children.append(
                     ChildChunk(
-                        index=len(children),
-                        content=piece,
-                        page_numbers=list(unit.page_numbers),
-                        section_path=unit.section_path,
-                        section_level=unit.section_level,
-                        source_units=(unit,),
-                    )
+    index=len(children),
+    content=piece,
+    page_numbers=list(unit.page_numbers),
+    section_id=section_id,
+    section_path=unit.section_path,
+    section_level=unit.section_level,
+    source_units=(unit,),
+)
                 )
 
     return children 

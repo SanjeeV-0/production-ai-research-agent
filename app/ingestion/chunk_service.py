@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import ChunkPageMap, DocumentChunk
 from app.core.repositories.document import DocumentRepository
-from app.ingestion.chunker import TextChunk
+from app.ingestion.size_guard import ChildChunk
 
 
 class ChunkService:
@@ -14,25 +14,25 @@ class ChunkService:
         self.repository = DocumentRepository(session)
 
     async def persist_chunks(
-        self,
-        document_id: UUID,
-        section_id: UUID,
-        page_ids: dict[int, UUID],
-        chunks: list[TextChunk],
-    ) -> list[DocumentChunk]:
+    self,
+    document_id: UUID,
+    page_ids: dict[int, UUID],
+    chunks: list[ChildChunk],
+) -> list[DocumentChunk]:
         """Persist chunks and map them to source pages."""
         persisted_chunks: list[DocumentChunk] = []
 
         for chunk in chunks:
             document_chunk = DocumentChunk(
-                document_id=document_id,
-                section_id=section_id,
-                chunk_index=chunk.index,
-                content=chunk.content,
-                chunk_metadata={
-                    "page_numbers": chunk.page_numbers,
-                },
-            )
+    document_id=document_id,
+    section_id=chunk.section_id,
+    chunk_index=chunk.index,
+    content=chunk.content,
+    chunk_metadata={
+        "page_numbers": chunk.page_numbers,
+        "section_path": chunk.section_path,
+    },
+)
 
             await self.repository.create_chunk(document_chunk)
 

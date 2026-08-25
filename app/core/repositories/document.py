@@ -3,7 +3,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import ChunkPageMap, Document, DocumentChunk, DocumentPage
+from app.core.models import (
+    ChunkPageMap,
+    Document,
+    DocumentChunk,
+    DocumentPage,
+    DocumentSection,
+)
 
 
 class DocumentRepository:
@@ -58,3 +64,12 @@ class DocumentRepository:
         await self.session.flush()
 
         return mapping  
+    async def create_section(
+    self,
+    section: DocumentSection,
+) -> DocumentSection:
+        """Persist a document section."""
+        self.session.add(section)
+        await self.session.flush()
+
+        return section
