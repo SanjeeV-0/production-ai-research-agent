@@ -1,6 +1,6 @@
 import pytest
 
-from app.embeddings.base import EmbeddingProvider
+from app.embeddings.provider import EmbeddingProvider
 
 
 def test_embedding_provider_is_abstract() -> None:
