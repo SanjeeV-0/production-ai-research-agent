@@ -10,6 +10,7 @@ from app.core.models import (
     DocumentPage,
     DocumentSection,
 )
+from app.retrieval.models import RetrievedChunk
 
 
 class DocumentRepository:
@@ -46,28 +47,29 @@ class DocumentRepository:
         return page
 
     async def create_chunk(
-    self,
-    chunk: DocumentChunk,
+        self,
+        chunk: DocumentChunk,
     ) -> DocumentChunk:
         """Persist a document chunk."""
         self.session.add(chunk)
         await self.session.flush()
 
-        return chunk 
+        return chunk
 
     async def create_chunk_page_mapping(
-    self,
-    mapping: ChunkPageMap,
+        self,
+        mapping: ChunkPageMap,
     ) -> ChunkPageMap:
         """Persist a chunk-to-page mapping."""
         self.session.add(mapping)
         await self.session.flush()
 
-        return mapping  
+        return mapping
+
     async def create_section(
-    self,
-    section: DocumentSection,
-) -> DocumentSection:
+        self,
+        section: DocumentSection,
+    ) -> DocumentSection:
         """Persist a document section."""
         self.session.add(section)
         await self.session.flush()
@@ -75,20 +77,29 @@ class DocumentRepository:
         return section
 
     async def search_similar_chunks(
-    self,
-    query_embedding: list[float],
-    limit: int = 10,
-) -> list[DocumentChunk]:
-        """Return chunks ranked by cosine similarity."""
-        result = await self.session.execute(
-        select(DocumentChunk)
-        .where(DocumentChunk.embedding.is_not(None))
-        .order_by(
-            DocumentChunk.embedding.cosine_distance(
-                query_embedding
-            )
+        self,
+        query_embedding: list[float],
+        limit: int = 10,
+    ) -> list[RetrievedChunk]:
+        """Return chunks ranked by cosine distance."""
+        distance = DocumentChunk.embedding.cosine_distance(
+            query_embedding
         )
-        .limit(limit)
-    )
 
-        return list(result.scalars().all())
+        result = await self.session.execute(
+            select(
+                DocumentChunk,
+                distance.label("distance"),
+            )
+            .where(DocumentChunk.embedding.is_not(None))
+            .order_by(distance)
+            .limit(limit)
+        )
+
+        return [
+            RetrievedChunk(
+                chunk=chunk,
+                distance=float(chunk_distance),
+            )
+            for chunk, chunk_distance in result.all()
+        ]

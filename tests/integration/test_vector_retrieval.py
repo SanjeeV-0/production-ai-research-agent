@@ -88,7 +88,11 @@ async def test_similar_chunks_are_retrieved() -> None:
         )
 
         assert len(results) == 2
-        assert results[0].content == similar_content
+        assert results[0].chunk.content == similar_content
+        assert results[0].distance <= results[1].distance
+        assert results[0].similarity >= results[1].similarity
+        assert 0.0 <= results[0].similarity <= 1.0
+        assert 0.0 <= results[1].similarity <= 1.0
 
         await session.delete(document)
         await session.commit()

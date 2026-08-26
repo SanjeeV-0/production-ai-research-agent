@@ -1,6 +1,6 @@
-from app.core.models import DocumentChunk
 from app.core.repositories.document import DocumentRepository
 from app.embeddings.provider import EmbeddingProvider
+from app.retrieval.models import RetrievedChunk
 
 
 class RetrievalService:
@@ -15,16 +15,16 @@ class RetrievalService:
         self.embedding_provider = embedding_provider
 
     async def search(
-        self,
-        query: str,
-        limit: int = 10,
-    ) -> list[DocumentChunk]:
+    self,
+    query: str,
+    limit: int = 10,
+) -> list[RetrievedChunk]:
         """Return chunks most similar to the query."""
         query_embedding = self.embedding_provider.embed_text(
-            query
-        )
+        query
+    )
 
         return await self.repository.search_similar_chunks(
-            query_embedding=query_embedding,
-            limit=limit,
-        )
+        query_embedding=query_embedding,
+        limit=limit,
+    )
