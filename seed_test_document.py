@@ -76,7 +76,6 @@ from app.embeddings.sentence_transformer import (
 from app.ingestion.loaders.markdown import MarkdownLoader
 from app.ingestion.service import IngestionService
 
-
 DOCUMENT_PATH = Path("test_research.md")
 
 

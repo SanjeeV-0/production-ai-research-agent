@@ -1,7 +1,9 @@
+from uuid import UUID
+
 from app.core.repositories.document import DocumentRepository
 from app.embeddings.provider import EmbeddingProvider
 from app.retrieval.models import RetrievedChunk
-from uuid import UUID
+
 
 class RetrievalService:
     """Retrieves document chunks using vector similarity."""
@@ -20,6 +22,7 @@ class RetrievalService:
     limit: int = 10,
     max_distance: float | None = None,
     document_id: UUID | None = None,
+    section_id: UUID | None = None,
 ) -> list[RetrievedChunk]:
         """Return chunks most similar to the query."""
 
@@ -32,4 +35,5 @@ class RetrievalService:
         limit=limit,
         max_distance=max_distance,
         document_id=document_id,
+        section_id=section_id
     )

@@ -2,7 +2,6 @@ from sqlalchemy import create_engine, text
 
 from app.embeddings.sentence_transformer import SentenceTransformerEmbeddingProvider
 
-
 # ============================================================
 # CHANGE THIS to your PostgreSQL connection string
 # ============================================================

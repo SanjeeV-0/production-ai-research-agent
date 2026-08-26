@@ -82,6 +82,7 @@ class DocumentRepository:
     limit: int = 10,
     max_distance: float | None = None,
     document_id: UUID | None = None,
+    section_id: UUID | None = None,
 ) -> list[RetrievedChunk]:
         """Return chunks ranked by cosine distance."""
 
@@ -100,6 +101,10 @@ class DocumentRepository:
         if document_id is not None:
             query = query.where(
             DocumentChunk.document_id == document_id
+        )
+        if section_id is not None:
+            query = query.where(
+            DocumentChunk.section_id == section_id
         )
 
         if max_distance is not None:
