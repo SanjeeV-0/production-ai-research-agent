@@ -1,7 +1,6 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.core.models import Document, DocumentChunk, DocumentSection
@@ -83,7 +82,13 @@ async def test_similar_chunks_are_retrieved() -> None:
         )
 
         assert len(results) == 2
-        assert results[0].chunk.content == similar_content
+        assert results[0].document_id == document.id
+        assert results[0].chunk_id == similar_chunk.id
+        assert results[0].section_id == section.id
+        assert results[0].section_path == "Results"
+        assert results[0].page_numbers == []
+        assert results[0].content == similar_content
+        assert results[0].content == similar_content
         assert results[0].distance <= results[1].distance
         assert results[0].similarity >= results[1].similarity
         assert 0.0 <= results[0].similarity <= 1.0
@@ -159,7 +164,7 @@ async def test_similarity_threshold_filters_distant_chunks() -> None:
         )
 
         assert all(
-            result.chunk.document_id == document.id
+            result.document_id == document.id
             for result in results
         )
 
@@ -169,7 +174,7 @@ async def test_similarity_threshold_filters_distant_chunks() -> None:
         )
 
         assert all(
-            result.chunk.content != unrelated_content
+            result.content != unrelated_content
             for result in results
         )
 
@@ -259,12 +264,12 @@ async def test_section_filter_limits_results_to_section() -> None:
 
         assert results
         assert all(
-            result.chunk.section_id == section.id
+            result.section_id == section.id
             for result in results
         )
 
         assert all(
-            result.chunk.content != unrelated_content
+            result.content != unrelated_content
             for result in results
         )
 
@@ -277,12 +282,12 @@ async def test_section_filter_limits_results_to_section() -> None:
 
         assert results
         assert all(
-            result.chunk.section_id == other_section.id
+            result.section_id == other_section.id
             for result in results
         )
 
         assert all(
-            result.chunk.content != similar_content
+            result.content != similar_content
             for result in results
         )
 

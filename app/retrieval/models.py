@@ -1,13 +1,17 @@
 from dataclasses import dataclass
-
-from app.core.models import DocumentChunk
+from uuid import UUID
 
 
 @dataclass(frozen=True)
 class RetrievedChunk:
     """A document chunk returned by vector retrieval."""
 
-    chunk: DocumentChunk
+    document_id: UUID
+    chunk_id: UUID
+    section_id: UUID
+    section_path: str
+    page_numbers: list[int]
+    content: str
     distance: float
 
     @property

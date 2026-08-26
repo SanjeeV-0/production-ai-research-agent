@@ -77,53 +77,82 @@ class DocumentRepository:
         return section
 
     async def search_similar_chunks(
-    self,
-    query_embedding: list[float],
-    limit: int = 10,
-    max_distance: float | None = None,
-    document_id: UUID | None = None,
-    section_id: UUID | None = None,
-) -> list[RetrievedChunk]:
+        self,
+        query_embedding: list[float],
+        limit: int = 10,
+        max_distance: float | None = None,
+        document_id: UUID | None = None,
+        section_id: UUID | None = None,
+    ) -> list[RetrievedChunk]:
         """Return chunks ranked by cosine distance."""
 
         distance = DocumentChunk.embedding.cosine_distance(
-        query_embedding
-    )
+            query_embedding
+        )
 
         query = (
-        select(
-            DocumentChunk,
-            distance.label("distance"),
+            select(
+                DocumentChunk,
+                DocumentSection.section_path,
+                distance.label("distance"),
+            )
+            .join(
+                DocumentSection,
+                DocumentChunk.section_id == DocumentSection.id,
+            )
+            .where(DocumentChunk.embedding.is_not(None))
         )
-        .where(DocumentChunk.embedding.is_not(None))
-    )
 
         if document_id is not None:
             query = query.where(
-            DocumentChunk.document_id == document_id
-        )
+                DocumentChunk.document_id == document_id
+            )
         if section_id is not None:
             query = query.where(
-            DocumentChunk.section_id == section_id
-        )
+                DocumentChunk.section_id == section_id
+            )
 
         if max_distance is not None:
             query = query.where(
-            distance <= max_distance
-        )
+                distance <= max_distance
+            )
 
         query = (
-        query
-        .order_by(distance)
-        .limit(limit)
-    )
+            query
+            .order_by(distance)
+            .limit(limit)
+        )
 
         result = await self.session.execute(query)
+        rows = result.all()
 
-        return [
-        RetrievedChunk(
-            chunk=chunk,
-            distance=float(chunk_distance),
-        )
-        for chunk, chunk_distance in result.all()
-    ]
+        retrieved_chunks = []
+
+        for chunk, section_path, chunk_distance in rows:
+            page_result = await self.session.execute(
+                select(DocumentPage.page_number)
+                .join(
+                    ChunkPageMap,
+                    ChunkPageMap.document_page_id == DocumentPage.id,
+                )
+                .where(
+                    ChunkPageMap.chunk_id == chunk.id
+                )
+                .order_by(DocumentPage.page_number)
+            )
+
+            page_numbers = list(page_result.scalars().all())
+
+            retrieved_chunks.append(
+                RetrievedChunk(
+                    document_id=chunk.document_id,
+                    chunk_id=chunk.id,
+                    section_id=chunk.section_id,
+                    section_path=section_path,
+                    page_numbers=page_numbers,
+                    content=chunk.content,
+                    distance=float(chunk_distance),
+                )
+            )
+
+        return retrieved_chunks
