@@ -77,29 +77,48 @@ class DocumentRepository:
         return section
 
     async def search_similar_chunks(
-        self,
-        query_embedding: list[float],
-        limit: int = 10,
-    ) -> list[RetrievedChunk]:
+    self,
+    query_embedding: list[float],
+    limit: int = 10,
+    max_distance: float | None = None,
+    document_id: UUID | None = None,
+) -> list[RetrievedChunk]:
         """Return chunks ranked by cosine distance."""
+
         distance = DocumentChunk.embedding.cosine_distance(
-            query_embedding
+        query_embedding
+    )
+
+        query = (
+        select(
+            DocumentChunk,
+            distance.label("distance"),
+        )
+        .where(DocumentChunk.embedding.is_not(None))
+    )
+
+        if document_id is not None:
+            query = query.where(
+            DocumentChunk.document_id == document_id
         )
 
-        result = await self.session.execute(
-            select(
-                DocumentChunk,
-                distance.label("distance"),
-            )
-            .where(DocumentChunk.embedding.is_not(None))
-            .order_by(distance)
-            .limit(limit)
+        if max_distance is not None:
+            query = query.where(
+            distance <= max_distance
         )
+
+        query = (
+        query
+        .order_by(distance)
+        .limit(limit)
+    )
+
+        result = await self.session.execute(query)
 
         return [
-            RetrievedChunk(
-                chunk=chunk,
-                distance=float(chunk_distance),
-            )
-            for chunk, chunk_distance in result.all()
-        ]
+        RetrievedChunk(
+            chunk=chunk,
+            distance=float(chunk_distance),
+        )
+        for chunk, chunk_distance in result.all()
+    ]

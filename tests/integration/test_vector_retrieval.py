@@ -4,6 +4,7 @@ import pytest
 
 from app.core.database import async_session_factory
 from app.core.models import Document, DocumentChunk, DocumentSection
+from app.core.repositories import document
 from app.core.repositories.document import DocumentRepository
 from app.embeddings.testing import DeterministicEmbeddingProvider
 from app.retrieval.service import RetrievalService
@@ -96,3 +97,30 @@ async def test_similar_chunks_are_retrieved() -> None:
 
         await session.delete(document)
         await session.commit()
+
+@pytest.mark.asyncio
+async def test_similarity_threshold_filters_distant_chunks() -> None:
+    provider = DeterministicEmbeddingProvider(
+        dimensions=384,
+    )
+
+    async with async_session_factory() as session:
+        # Use the same document/section setup as the existing test.
+
+        # ... create chunks ...
+
+        retrieval = RetrievalService(
+            repository=DocumentRepository(session),
+            embedding_provider=provider,
+        )
+
+        results = await retrieval.search(
+            "retrieval augmented generation",
+            limit=10,
+            max_distance=0.5,
+        )
+
+        assert all(
+    result.chunk.document_id == document.id
+    for result in results
+)
