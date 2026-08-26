@@ -23,7 +23,9 @@ async def test_ingest_file_persists_pages(tmp_path: Path) -> None:
     async with async_session_factory() as session:
         service = IngestionService(
     session,
-    embedding_provider=DeterministicEmbeddingProvider(),
+    embedding_provider=DeterministicEmbeddingProvider(
+    dimensions=384,
+),
 )
 
         document = await service.ingest_file(

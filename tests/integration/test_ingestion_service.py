@@ -24,7 +24,7 @@ async def test_ingestion_service_deduplicates_content(
     async with async_session_factory() as session:
         service = IngestionService(
             session,
-            embedding_provider=DeterministicEmbeddingProvider(),
+            embedding_provider=DeterministicEmbeddingProvider(dimensions=384,),
         )
 
         first_document = await service.ingest_file(
@@ -33,6 +33,7 @@ async def test_ingestion_service_deduplicates_content(
             title="Test Research Paper",
             document_type="research_paper",
             source="integration-test",
+
         )
 
         await session.commit()

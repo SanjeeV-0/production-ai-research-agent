@@ -73,3 +73,22 @@ class DocumentRepository:
         await self.session.flush()
 
         return section
+
+    async def search_similar_chunks(
+    self,
+    query_embedding: list[float],
+    limit: int = 10,
+) -> list[DocumentChunk]:
+        """Return chunks ranked by cosine similarity."""
+        result = await self.session.execute(
+        select(DocumentChunk)
+        .where(DocumentChunk.embedding.is_not(None))
+        .order_by(
+            DocumentChunk.embedding.cosine_distance(
+                query_embedding
+            )
+        )
+        .limit(limit)
+    )
+
+        return list(result.scalars().all())

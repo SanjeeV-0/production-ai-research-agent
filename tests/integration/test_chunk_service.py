@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.core.models import ChunkPageMap, Document, DocumentPage, DocumentSection
+from app.embeddings.testing import DeterministicEmbeddingProvider
 from app.ingestion.chunk_service import ChunkService
 from app.ingestion.size_guard import ChildChunk
 
@@ -74,7 +75,12 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
             ),
                     ]
 
-        service = ChunkService(session)
+        service = ChunkService(
+    session,
+    embedding_provider=DeterministicEmbeddingProvider(
+        dimensions=384,
+    ),
+)
 
         persisted_chunks = await service.persist_chunks(
             document_id=document.id,

@@ -10,9 +10,11 @@ authors = [
 dependencies = [
     "alembic>=1.16,<2.0",
     "fastapi>=0.141,<1.0",
+    "pgvector>=0.4,<1.0",
     "psycopg[binary]>=3.3,<4.0",
     "pydantic-settings>=2.0,<3.0",
     "pypdf>=5,<7",
+    "sentence-transformers>=5,<6",
     "sqlalchemy>=2.0,<3.0",
     "uvicorn>=0.52,<1.0",
 ]

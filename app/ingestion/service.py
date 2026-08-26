@@ -31,7 +31,9 @@ class IngestionService:
         self.structure_extractor = StructureExtractor()
         self.section_builder = SectionBuilder()
         self.section_service = SectionService(session)
-        self.chunk_service = ChunkService(session)
+        self.chunk_service = ChunkService(session,
+         embedding_provider=embedding_provider,
+)
         self.embedding_provider = embedding_provider
 
     async def ingest_file(

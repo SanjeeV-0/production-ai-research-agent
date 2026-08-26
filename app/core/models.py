@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
@@ -243,6 +244,10 @@ class DocumentChunk(Base):
 )
     section: Mapped["DocumentSection"] = relationship(
     back_populates="chunks",
+)
+    embedding: Mapped[list[float] | None] = mapped_column(
+    Vector(384),
+    nullable=True,
 )
 
 

@@ -40,7 +40,7 @@ The results are useful for future research.
     async with async_session_factory() as session:
         service = IngestionService(
             session,
-            embedding_provider=DeterministicEmbeddingProvider(),
+            embedding_provider=DeterministicEmbeddingProvider(dimensions=384,),
         )
 
         first_document = await service.ingest_file(
