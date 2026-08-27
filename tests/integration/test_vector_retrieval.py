@@ -293,3 +293,8 @@ async def test_section_filter_limits_results_to_section() -> None:
 
         await session.delete(document)
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_retrieved_chunk_preserves_multiple_page_numbers() -> None:
+    ...

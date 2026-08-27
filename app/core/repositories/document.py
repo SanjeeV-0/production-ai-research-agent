@@ -107,6 +107,7 @@ class DocumentRepository:
             query = query.where(
                 DocumentChunk.document_id == document_id
             )
+
         if section_id is not None:
             query = query.where(
                 DocumentChunk.section_id == section_id
@@ -126,33 +127,51 @@ class DocumentRepository:
         result = await self.session.execute(query)
         rows = result.all()
 
-        retrieved_chunks = []
+        if not rows:
+            return []
 
-        for chunk, section_path, chunk_distance in rows:
-            page_result = await self.session.execute(
-                select(DocumentPage.page_number)
-                .join(
-                    ChunkPageMap,
-                    ChunkPageMap.document_page_id == DocumentPage.id,
-                )
-                .where(
-                    ChunkPageMap.chunk_id == chunk.id
-                )
-                .order_by(DocumentPage.page_number)
+        chunk_ids = [
+            chunk.id
+            for chunk, _, _ in rows
+        ]
+
+        page_result = await self.session.execute(
+            select(
+                ChunkPageMap.chunk_id,
+                DocumentPage.page_number,
+            )
+            .join(
+                DocumentPage,
+                ChunkPageMap.document_page_id == DocumentPage.id,
+            )
+            .where(
+                ChunkPageMap.chunk_id.in_(chunk_ids)
+            )
+            .order_by(
+                ChunkPageMap.chunk_id,
+                DocumentPage.page_number,
+            )
+        )
+
+        page_numbers_by_chunk: dict[UUID, list[int]] = {
+            chunk_id: []
+            for chunk_id in chunk_ids
+        }
+
+        for chunk_id, page_number in page_result.all():
+            page_numbers_by_chunk[chunk_id].append(
+                page_number
             )
 
-            page_numbers = list(page_result.scalars().all())
-
-            retrieved_chunks.append(
-                RetrievedChunk(
-                    document_id=chunk.document_id,
-                    chunk_id=chunk.id,
-                    section_id=chunk.section_id,
-                    section_path=section_path,
-                    page_numbers=page_numbers,
-                    content=chunk.content,
-                    distance=float(chunk_distance),
-                )
+        return [
+            RetrievedChunk(
+                document_id=chunk.document_id,
+                chunk_id=chunk.id,
+                section_id=chunk.section_id,
+                section_path=section_path,
+                page_numbers=page_numbers_by_chunk[chunk.id],
+                content=chunk.content,
+                distance=float(chunk_distance),
             )
-
-        return retrieved_chunks
+            for chunk, section_path, chunk_distance in rows
+        ]
