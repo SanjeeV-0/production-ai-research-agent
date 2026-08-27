@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
+from app.api.retrieval import router as retrieval_router
 from app.config.settings import get_settings
 from app.core.database_health import check_database_connection
 from app.core.logging import configure_logging
@@ -16,6 +17,7 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
 )
+app.include_router(retrieval_router)
 
 
 @app.on_event("startup")

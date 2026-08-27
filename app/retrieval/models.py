@@ -13,6 +13,8 @@ class RetrievedChunk:
     page_numbers: list[int]
     content: str
     distance: float
+    rerank_score: float | None = None
+
 
     @property
     def similarity(self) -> float:
