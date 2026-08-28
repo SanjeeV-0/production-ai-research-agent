@@ -7,7 +7,6 @@ from httpx import ASGITransport, AsyncClient
 from app.core.database import async_session_factory
 from app.core.dependencies import (
     get_embedding_provider,
-    get_reranker,
     get_retrieval_service,
 )
 from app.core.models import (
@@ -50,27 +49,6 @@ class FakeRetrievalService:
         ]
 
 
-class FakeReranker:
-    """Fake reranker for API/database integration tests."""
-
-    def rerank(
-        self,
-        query: str,
-        chunks: list[RetrievedChunk],
-    ) -> list[RetrievedChunk]:
-        return [
-            RetrievedChunk(
-                document_id=chunk.document_id,
-                chunk_id=chunk.chunk_id,
-                section_id=chunk.section_id,
-                section_path=chunk.section_path,
-                page_numbers=chunk.page_numbers,
-                content=chunk.content,
-                distance=chunk.distance,
-                rerank_score=1.0,
-            )
-            for chunk in chunks
-        ]
 
 
 def test_retrieval_search_endpoint() -> None:
@@ -137,10 +115,9 @@ def test_retrieval_search_rejects_empty_query() -> None:
     finally:
         app.dependency_overrides.clear()
 
-
 @pytest.mark.asyncio
 async def test_retrieval_search_real_database() -> None:
-    """Test retrieval API against the real PostgreSQL/pgvector database."""
+    """Test retrieval API against real PostgreSQL, pgvector, and reranking."""
 
     async with async_session_factory() as session:
         document = Document(
@@ -240,16 +217,10 @@ async def test_retrieval_search_real_database() -> None:
             ]
         )
         await session.flush()
+
+        # Commit so the API's separate database session
+        # can see the test data.
         await session.commit()
-
-        
-
-        
-
-
-        app.dependency_overrides[get_reranker] = (
-            lambda: FakeReranker()
-        )
 
         try:
             transport = ASGITransport(app=app)
@@ -271,10 +242,13 @@ async def test_retrieval_search_real_database() -> None:
 
             body = response.json()
 
-            assert body["results"]
+            assert len(body["results"]) == 2
 
             first_result = body["results"][0]
+            second_result = body["results"][1]
 
+            # Vector retrieval + cross-encoder should put
+            # the relevant chunk first.
             assert (
                 first_result["content"]
                 == relevant_content
@@ -287,12 +261,20 @@ async def test_retrieval_search_real_database() -> None:
 
             assert first_result["page_numbers"] == [1]
 
+            # Similarity comes from pgvector cosine distance.
             assert 0.0 <= first_result["similarity"] <= 1.0
 
-            assert first_result["rerank_score"] == 1.0
+            # These scores come from the REAL cross-encoder.
+            assert first_result["rerank_score"] is not None
+            assert second_result["rerank_score"] is not None
+
+            assert (
+                first_result["rerank_score"]
+                >= second_result["rerank_score"]
+            )
 
         finally:
-            app.dependency_overrides.clear()
-
+            # Delete the test document. Relationships use
+            # cascade delete for dependent records.
             await session.delete(document)
             await session.commit()
