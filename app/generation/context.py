@@ -26,6 +26,14 @@ class GenerationContext:
 class ContextAssembler:
     """Assemble retrieved chunks into generation context."""
 
+    def __init__(self, max_characters: int | None = None) -> None:
+        if max_characters is not None and max_characters < 0:
+            raise ValueError(
+                "max_characters must be greater than or equal to zero."
+            )
+
+        self.max_characters = max_characters
+
     def assemble(
         self,
         chunks: list[RetrievedChunk],
@@ -34,11 +42,24 @@ class ContextAssembler:
 
         text_parts: list[str] = []
         sources: list[GenerationContextSource] = []
+        current_length = 0
 
         for index, chunk in enumerate(chunks, start=1):
-            text_parts.append(
-                f"[Source {index}]\n{chunk.content}"
-            )
+            source_text = f"[Source {index}]\n{chunk.content}"
+
+            additional_length = len(source_text)
+
+            if text_parts:
+                additional_length += 2
+
+            if (
+                self.max_characters is not None
+                and current_length + additional_length
+                > self.max_characters
+            ):
+                break
+
+            text_parts.append(source_text)
 
             sources.append(
                 GenerationContextSource(
@@ -49,6 +70,8 @@ class ContextAssembler:
                     page_numbers=chunk.page_numbers,
                 )
             )
+
+            current_length += additional_length
 
         return GenerationContext(
             text="\n\n".join(text_parts),
