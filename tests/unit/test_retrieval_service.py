@@ -100,3 +100,73 @@ async def test_candidate_limit_cannot_be_smaller_than_limit() -> None:
             limit=10,
             candidate_limit=5,
         )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_service_collects_trace() -> None:
+    chunks = [
+        _chunk(1),
+        _chunk(2),
+        _chunk(3),
+    ]
+
+    repository = FakeRepository(chunks)
+    reranker = FakeReranker()
+
+    service = RetrievalService(
+        repository=repository,
+        embedding_provider=FakeEmbeddingProvider(),
+        reranker=reranker,
+    )
+
+    results = await service.search(
+        "research query",
+        limit=2,
+        candidate_limit=3,
+        trace=True,
+    )
+
+    # Normal retrieval behavior is unchanged.
+    assert [result.content for result in results] == [
+        "chunk 3",
+        "chunk 2",
+    ]
+
+    # Trace was collected.
+    assert service.last_trace is not None
+
+    trace = service.last_trace
+
+    assert trace.query == "research query"
+    assert trace.candidate_limit == 3
+
+    # All vector-retrieved candidates are captured.
+    assert len(trace.candidates) == 3
+
+    assert [
+        candidate.content
+        for candidate in trace.candidates
+    ] == [
+        "chunk 1",
+        "chunk 2",
+        "chunk 3",
+    ]
+
+    # Only the final top-K results are captured here.
+    assert len(trace.final_results) == 2
+
+    assert [
+        candidate.content
+        for candidate in trace.final_results
+    ] == [
+        "chunk 3",
+        "chunk 2",
+    ]
+
+    # Trace preserves retrieval metadata.
+    assert trace.candidates[0].distance == 0.1
+    assert trace.candidates[0].rerank_score is None
+
+    # The reranker in this test doesn't assign scores,
+    # so the final trace should preserve None.
+    assert trace.final_results[0].rerank_score is None

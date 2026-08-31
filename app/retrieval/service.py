@@ -4,6 +4,10 @@ from app.core.repositories.document import DocumentRepository
 from app.embeddings.provider import EmbeddingProvider
 from app.retrieval.models import RetrievedChunk
 from app.retrieval.reranker import Reranker
+from app.retrieval.trace import (
+    RetrievalTrace,
+    RetrievalTraceCandidate,
+)
 
 
 class RetrievalService:
@@ -18,6 +22,7 @@ class RetrievalService:
         self.repository = repository
         self.embedding_provider = embedding_provider
         self.reranker = reranker
+        self.last_trace: RetrievalTrace | None = None
 
     async def search(
         self,
@@ -27,8 +32,11 @@ class RetrievalService:
         document_id: UUID | None = None,
         section_id: UUID | None = None,
         candidate_limit: int | None = None,
+        trace: bool = False,
     ) -> list[RetrievedChunk]:
         """Retrieve candidates and optionally rerank them."""
+
+        self.last_trace = None
 
         if candidate_limit is None:
             candidate_limit = max(limit, 50)
@@ -51,11 +59,45 @@ class RetrievalService:
         )
 
         if self.reranker is None:
-            return candidates[:limit]
+            results = candidates[:limit]
+        else:
+            reranked = self.reranker.rerank(
+                query,
+                candidates,
+            )
 
-        reranked = self.reranker.rerank(
-            query,
-            candidates,
-        )
+            results = reranked[:limit]
 
-        return reranked[:limit]
+        if trace:
+            self.last_trace = RetrievalTrace(
+                query=query,
+                candidate_limit=candidate_limit,
+                candidates=[
+                    RetrievalTraceCandidate(
+                        chunk_id=chunk.chunk_id,
+                        document_id=chunk.document_id,
+                        section_id=chunk.section_id,
+                        section_path=chunk.section_path,
+                        page_numbers=chunk.page_numbers,
+                        content=chunk.content,
+                        distance=chunk.distance,
+                        rerank_score=chunk.rerank_score,
+                    )
+                    for chunk in candidates
+                ],
+                final_results=[
+                    RetrievalTraceCandidate(
+                        chunk_id=chunk.chunk_id,
+                        document_id=chunk.document_id,
+                        section_id=chunk.section_id,
+                        section_path=chunk.section_path,
+                        page_numbers=chunk.page_numbers,
+                        content=chunk.content,
+                        distance=chunk.distance,
+                        rerank_score=chunk.rerank_score,
+                    )
+                    for chunk in results
+                ],
+            )
+
+        return results

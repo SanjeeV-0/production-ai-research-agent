@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.settings import get_settings
+from app.config.settings import Settings, get_settings
 from app.core.database import get_db_session
 from app.core.repositories.document import DocumentRepository
 from app.embeddings.sentence_transformer import (
@@ -35,6 +35,10 @@ def get_reranker() -> CrossEncoderReranker:
     return CrossEncoderReranker(
         model_name=settings.reranker_model,
     )
+
+def get_app_settings() -> Settings:
+    """Return application settings."""
+    return get_settings()
 
 
 async def get_retrieval_service(

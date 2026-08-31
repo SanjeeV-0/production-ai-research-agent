@@ -4,8 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
+from app.config.settings import Settings
 from app.core.database import async_session_factory
 from app.core.dependencies import (
+    get_app_settings,
     get_embedding_provider,
     get_retrieval_service,
 )
@@ -18,10 +20,17 @@ from app.core.models import (
 )
 from app.main import app
 from app.retrieval.models import RetrievedChunk
+from app.retrieval.trace import (
+    RetrievalTrace,
+    RetrievalTraceCandidate,
+)
 
 
 class FakeRetrievalService:
     """Fake retrieval service for API contract tests."""
+
+    def __init__(self) -> None:
+        self.last_trace = None
 
     async def search(
         self,
@@ -31,6 +40,7 @@ class FakeRetrievalService:
         document_id=None,
         section_id=None,
         candidate_limit=None,
+        trace: bool = False,
     ) -> list[RetrievedChunk]:
         return [
             RetrievedChunk(
@@ -47,8 +57,6 @@ class FakeRetrievalService:
                 rerank_score=4.2,
             )
         ]
-
-
 
 
 def test_retrieval_search_endpoint() -> None:
@@ -88,6 +96,111 @@ def test_retrieval_search_endpoint() -> None:
         assert result["similarity"] == 0.85
         assert result["rerank_score"] == 4.2
 
+        assert body["trace"] is None
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_retrieval_search_trace_mode() -> None:
+    """Test that trace mode exposes retrieval candidates and final results."""
+
+    retrieval_service = FakeRetrievalService()
+
+    trace_candidate = RetrievedChunk(
+        document_id=uuid4(),
+        chunk_id=uuid4(),
+        section_id=uuid4(),
+        section_path="Results",
+        page_numbers=[1],
+        content="Full retrieved chunk content.",
+        distance=0.12,
+        rerank_score=3.5,
+    )
+
+    retrieval_service.last_trace = RetrievalTrace(
+        query="research query",
+        candidate_limit=50,
+        candidates=[
+            RetrievalTraceCandidate(
+                document_id=trace_candidate.document_id,
+                chunk_id=trace_candidate.chunk_id,
+                section_id=trace_candidate.section_id,
+                section_path=trace_candidate.section_path,
+                page_numbers=trace_candidate.page_numbers,
+                content=trace_candidate.content,
+                distance=trace_candidate.distance,
+                rerank_score=trace_candidate.rerank_score,
+            )
+        ],
+        final_results=[
+            RetrievalTraceCandidate(
+                document_id=trace_candidate.document_id,
+                chunk_id=trace_candidate.chunk_id,
+                section_id=trace_candidate.section_id,
+                section_path=trace_candidate.section_path,
+                page_numbers=trace_candidate.page_numbers,
+                content=trace_candidate.content,
+                distance=trace_candidate.distance,
+                rerank_score=trace_candidate.rerank_score,
+            )
+        ],
+    )
+
+    app.dependency_overrides[get_retrieval_service] = (
+        lambda: retrieval_service
+    )
+
+    trace_settings = Settings(
+        trace_enabled=True,
+    )
+
+    app.dependency_overrides[get_app_settings] = (
+        lambda: trace_settings
+    )
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/retrieval/search",
+            json={
+                "query": "research query",
+                "limit": 1,
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert "trace" in body
+        assert body["trace"] is not None
+
+        trace = body["trace"]
+
+        assert trace["query"] == "research query"
+        assert trace["candidate_limit"] == 50
+
+        assert len(trace["candidates"]) == 1
+        assert len(trace["final_results"]) == 1
+
+        candidate = trace["candidates"][0]
+
+        assert candidate["content"] == (
+            "Full retrieved chunk content."
+        )
+        assert candidate["section_path"] == "Results"
+        assert candidate["page_numbers"] == [1]
+        assert candidate["distance"] == 0.12
+        assert candidate["rerank_score"] == 3.5
+
+        final_result = trace["final_results"][0]
+
+        assert final_result["content"] == (
+            "Full retrieved chunk content."
+        )
+
     finally:
         app.dependency_overrides.clear()
 
@@ -114,6 +227,7 @@ def test_retrieval_search_rejects_empty_query() -> None:
 
     finally:
         app.dependency_overrides.clear()
+
 
 @pytest.mark.asyncio
 async def test_retrieval_search_real_database() -> None:
@@ -264,7 +378,7 @@ async def test_retrieval_search_real_database() -> None:
             # Similarity comes from pgvector cosine distance.
             assert 0.0 <= first_result["similarity"] <= 1.0
 
-            # These scores come from the REAL cross-encoder.
+            # These scores come from the real cross-encoder.
             assert first_result["rerank_score"] is not None
             assert second_result["rerank_score"] is not None
 
@@ -274,7 +388,7 @@ async def test_retrieval_search_real_database() -> None:
             )
 
         finally:
-            # Delete the test document. Relationships use
-            # cascade delete for dependent records.
+            app.dependency_overrides.clear()
+
             await session.delete(document)
             await session.commit()
