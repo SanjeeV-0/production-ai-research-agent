@@ -17,12 +17,23 @@ class RetrievalTraceCandidate:
 
 
 @dataclass
+class RetrievalTraceContext:
+    """Trace information for context selected for generation."""
+
+    text: str
+    sources: list[RetrievalTraceCandidate] = field(
+        default_factory=list
+    )
+
+
+@dataclass
 class RetrievalTrace:
     """Debug trace for a complete retrieval operation."""
 
     query: str
 
     candidate_limit: int
+
     candidates: list[RetrievalTraceCandidate] = field(
         default_factory=list
     )
@@ -30,3 +41,5 @@ class RetrievalTrace:
     final_results: list[RetrievalTraceCandidate] = field(
         default_factory=list
     )
+
+    context: RetrievalTraceContext | None = None
