@@ -3,6 +3,7 @@ from uuid import UUID
 from app.core.repositories.document import DocumentRepository
 from app.embeddings.provider import EmbeddingProvider
 from app.generation.context import ContextAssembler
+from app.observability.langfuse import get_langfuse
 from app.retrieval.models import RetrievedChunk
 from app.retrieval.reranker import Reranker
 from app.retrieval.trace import (
@@ -52,6 +53,101 @@ class RetrievalService:
                 "candidate_limit must be greater than or equal to limit."
             )
 
+        langfuse = get_langfuse()
+
+        if langfuse is None:
+            return await self._search(
+                query=query,
+                limit=limit,
+                max_distance=max_distance,
+                document_id=document_id,
+                section_id=section_id,
+                candidate_limit=candidate_limit,
+                trace=trace,
+            )
+
+        with langfuse.start_as_current_observation(
+            as_type="retriever",
+            name="document-retrieval",
+            input={
+                "query": query,
+                "limit": limit,
+                "candidate_limit": candidate_limit,
+                "max_distance": max_distance,
+                "document_id": (
+                    str(document_id)
+                    if document_id is not None
+                    else None
+                ),
+                "section_id": (
+                    str(section_id)
+                    if section_id is not None
+                    else None
+                ),
+            },
+        ) as observation:
+            try:
+                results = await self._search(
+                    query=query,
+                    limit=limit,
+                    max_distance=max_distance,
+                    document_id=document_id,
+                    section_id=section_id,
+                    candidate_limit=candidate_limit,
+                    trace=trace,
+                )
+
+                observation.update(
+                    output={
+                        "result_count": len(results),
+                        "results": [
+                            {
+                                "chunk_id": str(
+                                    result.chunk_id
+                                ),
+                                "document_id": str(
+                                    result.document_id
+                                ),
+                                "section_id": str(
+                                    result.section_id
+                                ),
+                                "section_path": (
+                                    result.section_path
+                                ),
+                                "page_numbers": (
+                                    result.page_numbers
+                                ),
+                                "distance": result.distance,
+                                "rerank_score": (
+                                    result.rerank_score
+                                ),
+                            }
+                            for result in results
+                        ],
+                    }
+                )
+
+                return results
+
+            except Exception as exc:
+                observation.update(
+                    level="ERROR",
+                    status_message=str(exc),
+                )
+                raise
+
+    async def _search(
+        self,
+        query: str,
+        limit: int,
+        max_distance: float | None,
+        document_id: UUID | None,
+        section_id: UUID | None,
+        candidate_limit: int,
+        trace: bool,
+    ) -> list[RetrievedChunk]:
+        """Execute retrieval without observability concerns."""
+
         query_embedding = self.embedding_provider.embed_text(
             query
         )
@@ -97,9 +193,7 @@ class RetrievalService:
             self.last_trace.context = RetrievalTraceContext(
                 text=generation_context.text,
                 sources=[
-                    self._to_trace_candidate(
-                        chunk
-                    )
+                    self._to_trace_candidate(chunk)
                     for chunk in final_results
                 ],
             )

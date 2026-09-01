@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     trace_enabled: bool = False
+
+    langfuse_enabled: bool = False
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+    langfuse_environment: str = "development"
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

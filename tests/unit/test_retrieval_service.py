@@ -1,63 +1,190 @@
-from uuid import UUID
+from uuid import uuid4
 
-from pydantic import BaseModel, Field
+import pytest
 
-
-class RetrievalSearchRequest(BaseModel):
-    """Request payload for vector retrieval."""
-
-    query: str = Field(min_length=1)
-    limit: int = Field(default=10, ge=1, le=50)
-    document_id: UUID | None = None
-    section_id: UUID | None = None
+from app.generation.context import ContextAssembler
+from app.retrieval.models import RetrievedChunk
+from app.retrieval.service import RetrievalService
 
 
-class RetrievedChunkResponse(BaseModel):
-    """API representation of a retrieved chunk."""
-
-    document_id: UUID
-    chunk_id: UUID
-    section_id: UUID
-    section_path: str
-    page_numbers: list[int]
-    content: str
-    distance: float
-    similarity: float
-    rerank_score: float | None
+class FakeEmbeddingProvider:
+    def embed_text(self, text: str) -> list[float]:
+        return [1.0, 0.0]
 
 
-class RetrievalTraceCandidateResponse(BaseModel):
-    """API representation of a traced retrieval candidate."""
+class FakeRepository:
+    def __init__(
+        self,
+        chunks: list[RetrievedChunk],
+    ) -> None:
+        self.chunks = chunks
+        self.received_limit = None
 
-    document_id: UUID
-    chunk_id: UUID
-    section_id: UUID
-    section_path: str
-    page_numbers: list[int]
-    content: str
-    distance: float
-    rerank_score: float | None
-
-
-class RetrievalTraceContextResponse(BaseModel):
-    """API representation of context prepared for generation."""
-
-    text: str
-    sources: list[RetrievalTraceCandidateResponse]
-
-
-class RetrievalTraceResponse(BaseModel):
-    """Debug trace for a retrieval operation."""
-
-    query: str
-    candidate_limit: int
-    candidates: list[RetrievalTraceCandidateResponse]
-    final_results: list[RetrievalTraceCandidateResponse]
-    context: RetrievalTraceContextResponse | None = None
+    async def search_similar_chunks(
+        self,
+        query_embedding,
+        limit,
+        max_distance=None,
+        document_id=None,
+        section_id=None,
+    ):
+        self.received_limit = limit
+        return self.chunks
 
 
-class RetrievalSearchResponse(BaseModel):
-    """Response payload for vector retrieval."""
+class FakeReranker:
+    def __init__(self) -> None:
+        self.received_query = None
+        self.received_chunks = None
 
-    results: list[RetrievedChunkResponse]
-    trace: RetrievalTraceResponse | None = None
+    def rerank(self, query, chunks):
+        self.received_query = query
+        self.received_chunks = list(chunks)
+
+        return list(reversed(chunks))
+
+
+def _chunk(index: int) -> RetrievedChunk:
+    return RetrievedChunk(
+        document_id=uuid4(),
+        chunk_id=uuid4(),
+        section_id=uuid4(),
+        section_path="Results",
+        page_numbers=[1],
+        content=f"chunk {index}",
+        distance=0.1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_service_reranks_candidates() -> None:
+    chunks = [
+        _chunk(1),
+        _chunk(2),
+        _chunk(3),
+    ]
+
+    repository = FakeRepository(chunks)
+    reranker = FakeReranker()
+
+    service = RetrievalService(
+        repository=repository,
+        embedding_provider=FakeEmbeddingProvider(),
+        reranker=reranker,
+    )
+
+    results = await service.search(
+        "research query",
+        limit=2,
+        candidate_limit=3,
+    )
+
+    assert repository.received_limit == 3
+    assert reranker.received_query == "research query"
+    assert reranker.received_chunks == chunks
+
+    assert [result.content for result in results] == [
+        "chunk 3",
+        "chunk 2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_candidate_limit_cannot_be_smaller_than_limit() -> None:
+    service = RetrievalService(
+        repository=FakeRepository([]),
+        embedding_provider=FakeEmbeddingProvider(),
+        reranker=FakeReranker(),
+    )
+
+    with pytest.raises(ValueError):
+        await service.search(
+            "research query",
+            limit=10,
+            candidate_limit=5,
+        )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_service_trace_contains_generation_context() -> None:
+    chunks = [
+        _chunk(1),
+        _chunk(2),
+        _chunk(3),
+    ]
+
+    repository = FakeRepository(chunks)
+    reranker = FakeReranker()
+
+    service = RetrievalService(
+        repository=repository,
+        embedding_provider=FakeEmbeddingProvider(),
+        reranker=reranker,
+        context_assembler=ContextAssembler(),
+    )
+
+    results = await service.search(
+        "research query",
+        limit=2,
+        candidate_limit=3,
+        trace=True,
+    )
+
+    assert [result.content for result in results] == [
+        "chunk 3",
+        "chunk 2",
+    ]
+
+    assert service.last_trace is not None
+
+    trace = service.last_trace
+
+    assert len(trace.candidates) == 3
+    assert len(trace.final_results) == 2
+
+    assert trace.context is not None
+
+    assert trace.context.text == (
+        "[Source 1]\n"
+        "chunk 3\n\n"
+        "[Source 2]\n"
+        "chunk 2"
+    )
+
+    assert len(trace.context.sources) == 2
+
+    assert [
+        source.chunk_id
+        for source in trace.context.sources
+    ] == [
+        chunks[2].chunk_id,
+        chunks[1].chunk_id,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_retrieval_service_clears_previous_trace() -> None:
+    chunks = [_chunk(1)]
+
+    repository = FakeRepository(chunks)
+    reranker = FakeReranker()
+
+    service = RetrievalService(
+        repository=repository,
+        embedding_provider=FakeEmbeddingProvider(),
+        reranker=reranker,
+    )
+
+    await service.search(
+        "research query",
+        trace=True,
+    )
+
+    assert service.last_trace is not None
+
+    await service.search(
+        "another query",
+        trace=False,
+    )
+
+    assert service.last_trace is None
