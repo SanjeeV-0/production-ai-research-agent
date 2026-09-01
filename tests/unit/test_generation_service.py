@@ -25,6 +25,9 @@ class FakeGenerationProvider:
         return GenerationResult(
             text="Generated answer.",
             model="fake-model",
+            input_tokens=100,
+            output_tokens=25,
+            total_tokens=125,
         )
 
 
@@ -41,6 +44,10 @@ async def test_generation_provider_receives_query_and_context() -> None:
 
     assert result.text == "Generated answer."
     assert result.model == "fake-model"
+
+    assert result.input_tokens == 100
+    assert result.output_tokens == 25
+    assert result.total_tokens == 125
 
     assert provider.received_query == "What is RAG?"
     assert provider.received_context is context

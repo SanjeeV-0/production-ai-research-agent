@@ -45,11 +45,16 @@ class GenerationService:
                 )
 
                 observation.update(
-                    output={
-                        "text": result.text,
-                        "model": result.model,
-                    },
-                )
+                                output={
+                                            "text": result.text,
+                                            "model": result.model,
+                                            "usage": {
+                                                        "input_tokens": result.input_tokens,
+                                                        "output_tokens": result.output_tokens,
+                                                        "total_tokens": result.total_tokens,
+        },
+    },
+)
 
                 return result
 

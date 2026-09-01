@@ -19,9 +19,12 @@ class FakeGenerationProvider:
         self.received_context = context
 
         return GenerationResult(
-            text="Generated answer.",
-            model="fake-model",
-        )
+    text="Generated answer.",
+    model="fake-model",
+    input_tokens=100,
+    output_tokens=25,
+    total_tokens=125,
+)
 
 
 class FakeObservation:
@@ -129,6 +132,11 @@ async def test_generation_creates_langfuse_observation(
     assert observation.output == {
         "text": "Generated answer.",
         "model": "fake-model",
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 25,
+            "total_tokens": 125,
+        },
     }
 
 

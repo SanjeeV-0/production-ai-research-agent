@@ -1,18 +1,18 @@
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.generation.context import GenerationContext
 
 
+@dataclass(frozen=True)
 class GenerationResult:
     """Result returned by a generation provider."""
 
-    def __init__(
-        self,
-        text: str,
-        model: str,
-    ) -> None:
-        self.text = text
-        self.model = model
+    text: str
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 class GenerationProvider(Protocol):

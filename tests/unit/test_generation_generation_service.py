@@ -19,9 +19,12 @@ class FakeGenerationProvider:
         self.received_context = context
 
         return GenerationResult(
-            text="Generated answer.",
-            model="fake-model",
-        )
+    text="Generated answer.",
+    model="fake-model",
+    input_tokens=100,
+    output_tokens=25,
+    total_tokens=125,
+)
 
 
 @pytest.mark.asyncio
@@ -38,7 +41,9 @@ async def test_generation_service_delegates_to_provider() -> None:
 
     assert result.text == "Generated answer."
     assert result.model == "fake-model"
-
+    assert result.input_tokens == 100
+    assert result.output_tokens == 25
+    assert result.total_tokens == 125
     assert (
         provider.received_query
         == "What is retrieval augmented generation?"
