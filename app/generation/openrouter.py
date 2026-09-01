@@ -1,6 +1,5 @@
 from openai import AsyncOpenAI
 
-from app.config.settings import get_settings
 from app.generation.context import GenerationContext
 from app.generation.service import GenerationResult
 

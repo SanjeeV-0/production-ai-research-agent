@@ -10,10 +10,12 @@ from app.core.repositories.document import DocumentRepository
 from app.embeddings.sentence_transformer import (
     SentenceTransformerEmbeddingProvider,
 )
+from app.generation.generation_service import GenerationService
+from app.generation.openrouter import OpenRouterGenerationProvider
 from app.retrieval.cross_encoder import CrossEncoderReranker
 from app.retrieval.reranker import Reranker
 from app.retrieval.service import RetrievalService
-from app.generation.openrouter import OpenRouterGenerationProvider
+
 
 @lru_cache
 def get_embedding_provider() -> SentenceTransformerEmbeddingProvider:
@@ -36,8 +38,10 @@ def get_reranker() -> CrossEncoderReranker:
         model_name=settings.reranker_model,
     )
 
+
 def get_app_settings() -> Settings:
     """Return application settings."""
+
     return get_settings()
 
 
@@ -80,4 +84,17 @@ def get_generation_provider() -> OpenRouterGenerationProvider:
         model=settings.openrouter_model,
         base_url=settings.openrouter_base_url,
         app_name=settings.openrouter_app_name,
+    )
+
+
+def get_generation_service(
+    provider: Annotated[
+        OpenRouterGenerationProvider,
+        Depends(get_generation_provider),
+    ],
+) -> GenerationService:
+    """Create the application generation service."""
+
+    return GenerationService(
+        provider=provider,
     )

@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
+from app.api.research import router as research_router
 from app.api.retrieval import router as retrieval_router
 from app.config.settings import get_settings
 from app.core.database_health import check_database_connection
@@ -18,7 +19,7 @@ app = FastAPI(
     version=settings.app_version,
 )
 app.include_router(retrieval_router)
-
+app.include_router(research_router)
 
 @app.on_event("startup")
 async def startup_event() -> None:
