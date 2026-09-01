@@ -23,6 +23,7 @@ from app.retrieval.models import RetrievedChunk
 from app.retrieval.trace import (
     RetrievalTrace,
     RetrievalTraceCandidate,
+    RetrievalTraceContext,
 )
 
 
@@ -42,21 +43,56 @@ class FakeRetrievalService:
         candidate_limit=None,
         trace: bool = False,
     ) -> list[RetrievedChunk]:
-        return [
-            RetrievedChunk(
-                document_id=uuid4(),
-                chunk_id=uuid4(),
-                section_id=uuid4(),
-                section_path="Results",
-                page_numbers=[1, 2],
-                content=(
-                    "Retrieval augmented generation combines "
-                    "retrieval with generation."
-                ),
-                distance=0.15,
-                rerank_score=4.2,
+        """Return deterministic retrieval results."""
+
+        result = RetrievedChunk(
+            document_id=uuid4(),
+            chunk_id=uuid4(),
+            section_id=uuid4(),
+            section_path="Results",
+            page_numbers=[1, 2],
+            content=(
+                "Retrieval augmented generation combines "
+                "retrieval with generation."
+            ),
+            distance=0.15,
+            rerank_score=4.2,
+        )
+
+        if trace:
+            candidate = RetrievalTraceCandidate(
+                document_id=result.document_id,
+                chunk_id=result.chunk_id,
+                section_id=result.section_id,
+                section_path=result.section_path,
+                page_numbers=result.page_numbers,
+                content=result.content,
+                distance=result.distance,
+                rerank_score=result.rerank_score,
             )
-        ]
+
+            self.last_trace = RetrievalTrace(
+                query=query,
+                candidate_limit=(
+                    candidate_limit
+                    if candidate_limit is not None
+                    else max(limit, 50)
+                ),
+                candidates=[candidate],
+                final_results=[candidate],
+                context=RetrievalTraceContext(
+                    text=(
+                        "[Source 1]\n"
+                        "Retrieval augmented generation combines "
+                        "retrieval with generation."
+                    ),
+                    sources=[candidate],
+                ),
+            )
+        else:
+            self.last_trace = None
+
+        return [result]
 
 
 def test_retrieval_search_endpoint() -> None:
@@ -103,49 +139,9 @@ def test_retrieval_search_endpoint() -> None:
 
 
 def test_retrieval_search_trace_mode() -> None:
-    """Test that trace mode exposes retrieval candidates and final results."""
+    """Test that trace mode exposes retrieval candidates and context."""
 
     retrieval_service = FakeRetrievalService()
-
-    trace_candidate = RetrievedChunk(
-        document_id=uuid4(),
-        chunk_id=uuid4(),
-        section_id=uuid4(),
-        section_path="Results",
-        page_numbers=[1],
-        content="Full retrieved chunk content.",
-        distance=0.12,
-        rerank_score=3.5,
-    )
-
-    retrieval_service.last_trace = RetrievalTrace(
-        query="research query",
-        candidate_limit=50,
-        candidates=[
-            RetrievalTraceCandidate(
-                document_id=trace_candidate.document_id,
-                chunk_id=trace_candidate.chunk_id,
-                section_id=trace_candidate.section_id,
-                section_path=trace_candidate.section_path,
-                page_numbers=trace_candidate.page_numbers,
-                content=trace_candidate.content,
-                distance=trace_candidate.distance,
-                rerank_score=trace_candidate.rerank_score,
-            )
-        ],
-        final_results=[
-            RetrievalTraceCandidate(
-                document_id=trace_candidate.document_id,
-                chunk_id=trace_candidate.chunk_id,
-                section_id=trace_candidate.section_id,
-                section_path=trace_candidate.section_path,
-                page_numbers=trace_candidate.page_numbers,
-                content=trace_candidate.content,
-                distance=trace_candidate.distance,
-                rerank_score=trace_candidate.rerank_score,
-            )
-        ],
-    )
 
     app.dependency_overrides[get_retrieval_service] = (
         lambda: retrieval_service
@@ -185,21 +181,29 @@ def test_retrieval_search_trace_mode() -> None:
         assert len(trace["candidates"]) == 1
         assert len(trace["final_results"]) == 1
 
-        candidate = trace["candidates"][0]
+        assert trace["context"] is not None
 
-        assert candidate["content"] == (
-            "Full retrieved chunk content."
+        context = trace["context"]
+
+        assert context["text"] == (
+            "[Source 1]\n"
+            "Retrieval augmented generation combines "
+            "retrieval with generation."
         )
-        assert candidate["section_path"] == "Results"
-        assert candidate["page_numbers"] == [1]
-        assert candidate["distance"] == 0.12
-        assert candidate["rerank_score"] == 3.5
 
-        final_result = trace["final_results"][0]
+        assert len(context["sources"]) == 1
 
-        assert final_result["content"] == (
-            "Full retrieved chunk content."
+        context_source = context["sources"][0]
+
+        assert context_source["content"] == (
+            "Retrieval augmented generation combines "
+            "retrieval with generation."
         )
+
+        assert context_source["section_path"] == "Results"
+        assert context_source["page_numbers"] == [1, 2]
+        assert context_source["distance"] == 0.15
+        assert context_source["rerank_score"] == 4.2
 
     finally:
         app.dependency_overrides.clear()

@@ -39,6 +39,13 @@ class RetrievalTraceCandidateResponse(BaseModel):
     rerank_score: float | None
 
 
+class RetrievalTraceContextResponse(BaseModel):
+    """API representation of context prepared for generation."""
+
+    text: str
+    sources: list[RetrievalTraceCandidateResponse]
+
+
 class RetrievalTraceResponse(BaseModel):
     """Debug trace for a retrieval operation."""
 
@@ -46,6 +53,7 @@ class RetrievalTraceResponse(BaseModel):
     candidate_limit: int
     candidates: list[RetrievalTraceCandidateResponse]
     final_results: list[RetrievalTraceCandidateResponse]
+    context: RetrievalTraceContextResponse | None = None
 
 
 class RetrievalSearchResponse(BaseModel):

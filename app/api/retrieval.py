@@ -3,11 +3,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.config.settings import Settings
-from app.core.dependencies import get_app_settings, get_retrieval_service
+from app.core.dependencies import (
+    get_app_settings,
+    get_retrieval_service,
+)
 from app.retrieval.schemas import (
     RetrievalSearchRequest,
     RetrievalSearchResponse,
     RetrievalTraceCandidateResponse,
+    RetrievalTraceContextResponse,
     RetrievalTraceResponse,
     RetrievedChunkResponse,
 )
@@ -19,6 +23,23 @@ router = APIRouter(
 )
 
 
+def _trace_candidate_response(
+    candidate,
+) -> RetrievalTraceCandidateResponse:
+    """Convert a trace candidate into an API response."""
+
+    return RetrievalTraceCandidateResponse(
+        document_id=candidate.document_id,
+        chunk_id=candidate.chunk_id,
+        section_id=candidate.section_id,
+        section_path=candidate.section_path,
+        page_numbers=candidate.page_numbers,
+        content=candidate.content,
+        distance=candidate.distance,
+        rerank_score=candidate.rerank_score,
+    )
+
+
 @router.post(
     "/search",
     response_model=RetrievalSearchResponse,
@@ -28,13 +49,14 @@ async def search(
     retrieval_service: Annotated[
         RetrievalService,
         Depends(get_retrieval_service),
-    ],settings: Annotated[
-    Settings,
-    Depends(get_app_settings),
-],
+    ],
+    settings: Annotated[
+        Settings,
+        Depends(get_app_settings),
+    ],
 ) -> RetrievalSearchResponse:
     """Search for relevant document chunks."""
-    
+
     results = await retrieval_service.search(
         query=request.query,
         limit=request.limit,
@@ -45,36 +67,32 @@ async def search(
 
     trace_response = None
 
-    if retrieval_service.last_trace is not None:
+    trace = retrieval_service.last_trace
+
+    if trace is not None:
+        context_response = None
+
+        if trace.context is not None:
+            context_response = RetrievalTraceContextResponse(
+                text=trace.context.text,
+                sources=[
+                    _trace_candidate_response(source)
+                    for source in trace.context.sources
+                ],
+            )
+
         trace_response = RetrievalTraceResponse(
-            query=retrieval_service.last_trace.query,
-            candidate_limit=retrieval_service.last_trace.candidate_limit,
+            query=trace.query,
+            candidate_limit=trace.candidate_limit,
             candidates=[
-                RetrievalTraceCandidateResponse(
-                    document_id=candidate.document_id,
-                    chunk_id=candidate.chunk_id,
-                    section_id=candidate.section_id,
-                    section_path=candidate.section_path,
-                    page_numbers=candidate.page_numbers,
-                    content=candidate.content,
-                    distance=candidate.distance,
-                    rerank_score=candidate.rerank_score,
-                )
-                for candidate in retrieval_service.last_trace.candidates
+                _trace_candidate_response(candidate)
+                for candidate in trace.candidates
             ],
             final_results=[
-                RetrievalTraceCandidateResponse(
-                    document_id=candidate.document_id,
-                    chunk_id=candidate.chunk_id,
-                    section_id=candidate.section_id,
-                    section_path=candidate.section_path,
-                    page_numbers=candidate.page_numbers,
-                    content=candidate.content,
-                    distance=candidate.distance,
-                    rerank_score=candidate.rerank_score,
-                )
-                for candidate in retrieval_service.last_trace.final_results
+                _trace_candidate_response(result)
+                for result in trace.final_results
             ],
+            context=context_response,
         )
 
     return RetrievalSearchResponse(

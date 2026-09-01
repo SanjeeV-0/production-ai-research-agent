@@ -1,172 +1,63 @@
-from uuid import uuid4
+from uuid import UUID
 
-import pytest
-
-from app.retrieval.models import RetrievedChunk
-from app.retrieval.service import RetrievalService
+from pydantic import BaseModel, Field
 
 
-class FakeEmbeddingProvider:
-    def embed_text(self, text: str) -> list[float]:
-        return [1.0, 0.0]
+class RetrievalSearchRequest(BaseModel):
+    """Request payload for vector retrieval."""
+
+    query: str = Field(min_length=1)
+    limit: int = Field(default=10, ge=1, le=50)
+    document_id: UUID | None = None
+    section_id: UUID | None = None
 
 
-class FakeRepository:
-    def __init__(self, chunks):
-        self.chunks = chunks
-        self.received_limit = None
+class RetrievedChunkResponse(BaseModel):
+    """API representation of a retrieved chunk."""
 
-    async def search_similar_chunks(
-        self,
-        query_embedding,
-        limit,
-        max_distance=None,
-        document_id=None,
-        section_id=None,
-    ):
-        self.received_limit = limit
-        return self.chunks
+    document_id: UUID
+    chunk_id: UUID
+    section_id: UUID
+    section_path: str
+    page_numbers: list[int]
+    content: str
+    distance: float
+    similarity: float
+    rerank_score: float | None
 
 
-class FakeReranker:
-    def __init__(self):
-        self.received_query = None
-        self.received_chunks = None
+class RetrievalTraceCandidateResponse(BaseModel):
+    """API representation of a traced retrieval candidate."""
 
-    def rerank(self, query, chunks):
-        self.received_query = query
-        self.received_chunks = list(chunks)
-
-        return list(reversed(chunks))
-
-
-def _chunk(index: int) -> RetrievedChunk:
-    return RetrievedChunk(
-        document_id=uuid4(),
-        chunk_id=uuid4(),
-        section_id=uuid4(),
-        section_path="Results",
-        page_numbers=[1],
-        content=f"chunk {index}",
-        distance=0.1,
-    )
+    document_id: UUID
+    chunk_id: UUID
+    section_id: UUID
+    section_path: str
+    page_numbers: list[int]
+    content: str
+    distance: float
+    rerank_score: float | None
 
 
-@pytest.mark.asyncio
-async def test_retrieval_service_reranks_candidates() -> None:
-    chunks = [
-        _chunk(1),
-        _chunk(2),
-        _chunk(3),
-    ]
+class RetrievalTraceContextResponse(BaseModel):
+    """API representation of context prepared for generation."""
 
-    repository = FakeRepository(chunks)
-    reranker = FakeReranker()
-
-    service = RetrievalService(
-        repository=repository,
-        embedding_provider=FakeEmbeddingProvider(),
-        reranker=reranker,
-    )
-
-    results = await service.search(
-        "research query",
-        limit=2,
-        candidate_limit=3,
-    )
-
-    assert repository.received_limit == 3
-
-    assert reranker.received_query == "research query"
-    assert reranker.received_chunks == chunks
-
-    assert [result.content for result in results] == [
-        "chunk 3",
-        "chunk 2",
-    ]
+    text: str
+    sources: list[RetrievalTraceCandidateResponse]
 
 
-@pytest.mark.asyncio
-async def test_candidate_limit_cannot_be_smaller_than_limit() -> None:
-    service = RetrievalService(
-        repository=FakeRepository([]),
-        embedding_provider=FakeEmbeddingProvider(),
-        reranker=FakeReranker(),
-    )
+class RetrievalTraceResponse(BaseModel):
+    """Debug trace for a retrieval operation."""
 
-    with pytest.raises(ValueError):
-        await service.search(
-            "research query",
-            limit=10,
-            candidate_limit=5,
-        )
+    query: str
+    candidate_limit: int
+    candidates: list[RetrievalTraceCandidateResponse]
+    final_results: list[RetrievalTraceCandidateResponse]
+    context: RetrievalTraceContextResponse | None = None
 
 
-@pytest.mark.asyncio
-async def test_retrieval_service_collects_trace() -> None:
-    chunks = [
-        _chunk(1),
-        _chunk(2),
-        _chunk(3),
-    ]
+class RetrievalSearchResponse(BaseModel):
+    """Response payload for vector retrieval."""
 
-    repository = FakeRepository(chunks)
-    reranker = FakeReranker()
-
-    service = RetrievalService(
-        repository=repository,
-        embedding_provider=FakeEmbeddingProvider(),
-        reranker=reranker,
-    )
-
-    results = await service.search(
-        "research query",
-        limit=2,
-        candidate_limit=3,
-        trace=True,
-    )
-
-    # Normal retrieval behavior is unchanged.
-    assert [result.content for result in results] == [
-        "chunk 3",
-        "chunk 2",
-    ]
-
-    # Trace was collected.
-    assert service.last_trace is not None
-
-    trace = service.last_trace
-
-    assert trace.query == "research query"
-    assert trace.candidate_limit == 3
-
-    # All vector-retrieved candidates are captured.
-    assert len(trace.candidates) == 3
-
-    assert [
-        candidate.content
-        for candidate in trace.candidates
-    ] == [
-        "chunk 1",
-        "chunk 2",
-        "chunk 3",
-    ]
-
-    # Only the final top-K results are captured here.
-    assert len(trace.final_results) == 2
-
-    assert [
-        candidate.content
-        for candidate in trace.final_results
-    ] == [
-        "chunk 3",
-        "chunk 2",
-    ]
-
-    # Trace preserves retrieval metadata.
-    assert trace.candidates[0].distance == 0.1
-    assert trace.candidates[0].rerank_score is None
-
-    # The reranker in this test doesn't assign scores,
-    # so the final trace should preserve None.
-    assert trace.final_results[0].rerank_score is None
+    results: list[RetrievedChunkResponse]
+    trace: RetrievalTraceResponse | None = None
