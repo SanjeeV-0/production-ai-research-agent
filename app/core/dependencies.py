@@ -13,7 +13,7 @@ from app.embeddings.sentence_transformer import (
 from app.retrieval.cross_encoder import CrossEncoderReranker
 from app.retrieval.reranker import Reranker
 from app.retrieval.service import RetrievalService
-
+from app.generation.openrouter import OpenRouterGenerationProvider
 
 @lru_cache
 def get_embedding_provider() -> SentenceTransformerEmbeddingProvider:
@@ -61,4 +61,23 @@ async def get_retrieval_service(
         repository=DocumentRepository(session),
         embedding_provider=embedding_provider,
         reranker=reranker,
+    )
+
+
+@lru_cache
+def get_generation_provider() -> OpenRouterGenerationProvider:
+    """Return the configured OpenRouter generation provider."""
+
+    settings = get_settings()
+
+    if not settings.openrouter_api_key:
+        raise ValueError(
+            "OPENROUTER_API_KEY must be configured."
+        )
+
+    return OpenRouterGenerationProvider(
+        api_key=settings.openrouter_api_key,
+        model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        app_name=settings.openrouter_app_name,
     )

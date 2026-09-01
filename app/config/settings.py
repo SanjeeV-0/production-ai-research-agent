@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = None
     langfuse_base_url: str = "https://cloud.langfuse.com"
     langfuse_environment: str = "development"
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "meta-llama/llama-3.3-8b-instruct:free"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_app_name: str = "Production AI Research & Knowledge Agent"
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
