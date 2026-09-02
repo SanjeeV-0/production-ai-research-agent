@@ -20,6 +20,7 @@ router = APIRouter(
 
 class ResearchRequest(BaseModel):
     query: str = Field(min_length=1)
+    trace: bool = False
 
 
 @router.post("/ask")
@@ -37,6 +38,7 @@ async def ask(
     """Answer a research question using retrieved context."""
 
     query = request.query
+    trace = request.trace
     langfuse = get_langfuse()
 
     if langfuse is None:
@@ -44,18 +46,23 @@ async def ask(
             query=query,
             retrieval_service=retrieval_service,
             generation_service=generation_service,
+            trace=trace,
         )
 
     with langfuse.start_as_current_observation(
         as_type="span",
         name="research-request",
-        input={"query": query},
+        input={
+            "query": query,
+            "trace": trace,
+        },
     ) as observation:
         try:
             response = await _execute_research(
                 query=query,
                 retrieval_service=retrieval_service,
                 generation_service=generation_service,
+                trace=trace,
             )
 
             observation.update(
@@ -80,12 +87,14 @@ async def _execute_research(
     query: str,
     retrieval_service: RetrievalService,
     generation_service: GenerationService,
+    trace: bool = False,
 ) -> dict[str, object]:
     """Execute retrieval, context assembly, and generation."""
 
     results = await retrieval_service.search(
         query=query,
         limit=10,
+        trace=trace,
     )
 
     context = ContextAssembler().assemble(results)
@@ -95,7 +104,7 @@ async def _execute_research(
         context=context,
     )
 
-    return {
+    response: dict[str, object] = {
         "answer": generation_result.text,
         "model": generation_result.model,
         "sources": [
@@ -109,3 +118,57 @@ async def _execute_research(
             for source in context.sources
         ],
     }
+
+    if trace and retrieval_service.last_trace is not None:
+        response["trace"] = {
+            "query": retrieval_service.last_trace.query,
+            "candidate_limit": retrieval_service.last_trace.candidate_limit,
+            "candidates": [
+                {
+                    "document_id": candidate.document_id,
+                    "chunk_id": candidate.chunk_id,
+                    "section_id": candidate.section_id,
+                    "section_path": candidate.section_path,
+                    "page_numbers": candidate.page_numbers,
+                    "content": candidate.content,
+                    "distance": candidate.distance,
+                    "rerank_score": candidate.rerank_score,
+                }
+                for candidate in retrieval_service.last_trace.candidates
+            ],
+            "final_results": [
+                {
+                    "document_id": result.document_id,
+                    "chunk_id": result.chunk_id,
+                    "section_id": result.section_id,
+                    "section_path": result.section_path,
+                    "page_numbers": result.page_numbers,
+                    "content": result.content,
+                    "distance": result.distance,
+                    "rerank_score": result.rerank_score,
+                }
+                for result in retrieval_service.last_trace.final_results
+            ],
+            "context": (
+                {
+                    "text": retrieval_service.last_trace.context.text,
+                    "sources": [
+                        {
+                            "document_id": source.document_id,
+                            "chunk_id": source.chunk_id,
+                            "section_id": source.section_id,
+                            "section_path": source.section_path,
+                            "page_numbers": source.page_numbers,
+                            "content": source.content,
+                            "distance": source.distance,
+                            "rerank_score": source.rerank_score,
+                        }
+                        for source in retrieval_service.last_trace.context.sources
+                    ],
+                }
+                if retrieval_service.last_trace.context is not None
+                else None
+            ),
+        }
+
+    return response

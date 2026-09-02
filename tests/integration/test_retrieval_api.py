@@ -9,6 +9,7 @@ from app.core.database import async_session_factory
 from app.core.dependencies import (
     get_app_settings,
     get_embedding_provider,
+    get_generation_service,
     get_retrieval_service,
 )
 from app.core.models import (
@@ -18,6 +19,8 @@ from app.core.models import (
     DocumentPage,
     DocumentSection,
 )
+from app.generation.context import GenerationContext
+from app.generation.service import GenerationResult
 from app.main import app
 from app.retrieval.models import RetrievedChunk
 from app.retrieval.trace import (
@@ -93,6 +96,28 @@ class FakeRetrievalService:
             self.last_trace = None
 
         return [result]
+
+
+class FakeGenerationService:
+    """Fake generation service for research API contract tests."""
+
+    async def generate(
+        self,
+        query: str,
+        context: GenerationContext,
+    ) -> GenerationResult:
+        """Return deterministic generation results."""
+
+        return GenerationResult(
+            text="RAG combines retrieval with language generation.",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=20,
+            total_tokens=120,
+        )
+
+
+
 
 
 def test_retrieval_search_endpoint() -> None:
@@ -396,3 +421,132 @@ async def test_retrieval_search_real_database() -> None:
 
             await session.delete(document)
             await session.commit()
+
+
+def test_research_ask_endpoint() -> None:
+    """Test the research API response contract without trace."""
+
+    retrieval_service = FakeRetrievalService()
+    generation_service = FakeGenerationService()
+
+    app.dependency_overrides[get_retrieval_service] = (
+        lambda: retrieval_service
+    )
+    app.dependency_overrides[get_generation_service] = (
+        lambda: generation_service
+    )
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/research/ask",
+            json={
+                "query": "What is retrieval augmented generation?",
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body["answer"] == (
+            "RAG combines retrieval with language generation."
+        )
+        assert body["model"] == "test-model"
+
+        assert len(body["sources"]) == 1
+
+        source = body["sources"][0]
+
+        assert source["section_path"] == "Results"
+        assert source["page_numbers"] == [1, 2]
+
+        assert "trace" not in body
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_research_ask_trace_mode() -> None:
+    """Test that research trace mode exposes retrieval trace."""
+
+    retrieval_service = FakeRetrievalService()
+    generation_service = FakeGenerationService()
+
+    app.dependency_overrides[get_retrieval_service] = (
+        lambda: retrieval_service
+    )
+    app.dependency_overrides[get_generation_service] = (
+        lambda: generation_service
+    )
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/research/ask",
+            json={
+                "query": "What is retrieval augmented generation?",
+                "trace": True,
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body["answer"] == (
+            "RAG combines retrieval with language generation."
+        )
+        assert body["model"] == "test-model"
+
+        assert len(body["sources"]) == 1
+
+        assert "trace" in body
+        assert body["trace"] is not None
+
+        trace = body["trace"]
+
+        assert trace["query"] == (
+            "What is retrieval augmented generation?"
+        )
+
+        assert trace["candidate_limit"] == 50
+
+        assert len(trace["candidates"]) == 1
+        assert len(trace["final_results"]) == 1
+
+        candidate = trace["candidates"][0]
+
+        assert candidate["section_path"] == "Results"
+        assert candidate["page_numbers"] == [1, 2]
+        assert candidate["distance"] == 0.15
+        assert candidate["rerank_score"] == 4.2
+
+        context = trace["context"]
+
+        assert context is not None
+
+        assert context["text"] == (
+            "[Source 1]\n"
+            "Retrieval augmented generation combines "
+            "retrieval with generation."
+        )
+
+        assert len(context["sources"]) == 1
+
+        context_source = context["sources"][0]
+
+        assert context_source["content"] == (
+            "Retrieval augmented generation combines "
+            "retrieval with generation."
+        )
+
+        assert context_source["section_path"] == "Results"
+        assert context_source["page_numbers"] == [1, 2]
+        assert context_source["distance"] == 0.15
+        assert context_source["rerank_score"] == 4.2
+
+    finally:
+        app.dependency_overrides.clear()
