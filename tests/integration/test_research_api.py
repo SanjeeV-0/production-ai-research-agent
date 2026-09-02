@@ -80,7 +80,7 @@ async def test_research_ask_endpoint() -> None:
         ) as client:
             response = await client.post(
                 "/research/ask",
-                params={
+                json={
                     "query": "What is RAG?",
                 },
             )

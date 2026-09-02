@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
 from app.core.dependencies import (
     get_generation_service,
@@ -17,9 +18,13 @@ router = APIRouter(
 )
 
 
+class ResearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+
+
 @router.post("/ask")
 async def ask(
-    query: str,
+    request: ResearchRequest,
     retrieval_service: Annotated[
         RetrievalService,
         Depends(get_retrieval_service),
@@ -31,6 +36,7 @@ async def ask(
 ) -> dict[str, object]:
     """Answer a research question using retrieved context."""
 
+    query = request.query
     langfuse = get_langfuse()
 
     if langfuse is None:
