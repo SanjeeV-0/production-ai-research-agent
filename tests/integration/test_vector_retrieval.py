@@ -20,6 +20,9 @@ async def test_similar_chunks_are_retrieved() -> None:
             title=f"Retrieval Test {uuid4()}",
             document_type="research_paper",
             content_hash=f"retrieval-test-{uuid4()}",
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
             document_metadata={},
         )
 
@@ -109,6 +112,9 @@ async def test_similarity_threshold_filters_distant_chunks() -> None:
             title=f"Retrieval Threshold Test {uuid4()}",
             document_type="research_paper",
             content_hash=f"retrieval-threshold-test-{uuid4()}",
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
             document_metadata={},
         )
 
@@ -192,6 +198,9 @@ async def test_section_filter_limits_results_to_section() -> None:
             title=f"Retrieval Section Test {uuid4()}",
             document_type="research_paper",
             content_hash=f"retrieval-section-test-{uuid4()}",
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
             document_metadata={},
         )
 

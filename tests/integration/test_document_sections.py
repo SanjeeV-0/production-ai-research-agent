@@ -14,6 +14,9 @@ async def test_document_sections_support_nested_hierarchy() -> None:
             title=f"Section Test {uuid4()}",
             document_type="research_paper",
             content_hash=f"section-test-{uuid4()}",
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
             document_metadata={},
         )
 

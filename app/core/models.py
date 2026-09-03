@@ -58,12 +58,26 @@ class Document(Base):
         nullable=False,
     )
 
+    logical_document_id: Mapped[UUID] = mapped_column(
+    PostgreSQLUUID(as_uuid=True),
+    nullable=False,
+    index=True,
+)
     content_hash: Mapped[str] = mapped_column(
-        String(64),
-        unique=True,
-        nullable=False,
-        index=True,
-    )
+    String(64),
+    nullable=False,
+    index=True,
+)
+
+    version_number: Mapped[int] = mapped_column(
+    nullable=False,
+)
+
+    is_current: Mapped[bool] = mapped_column(
+    nullable=False,
+    default=False,
+    index=True,
+)
     status: Mapped[DocumentStatus] = mapped_column(
         String(20),
         nullable=False,

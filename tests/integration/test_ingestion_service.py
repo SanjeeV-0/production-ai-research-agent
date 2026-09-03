@@ -31,6 +31,7 @@ async def test_ingestion_service_deduplicates_content(
                 dimensions=384,
             ),
         )
+        logical_document_id = uuid4()
 
         first_document = await service.ingest_file(
             path=document_path,
@@ -38,6 +39,7 @@ async def test_ingestion_service_deduplicates_content(
             title="Test Research Paper",
             document_type="research_paper",
             source="integration-test",
+             logical_document_id=logical_document_id,
         )
 
         await session.commit()
@@ -48,6 +50,7 @@ async def test_ingestion_service_deduplicates_content(
             title="Test Research Paper",
             document_type="research_paper",
             source="integration-test",
+             logical_document_id=logical_document_id,
         )
 
         await session.commit()

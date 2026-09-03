@@ -13,12 +13,16 @@ from app.ingestion.size_guard import ChildChunk
 @pytest.mark.asyncio
 async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
     async with async_session_factory() as session:
-        document = Document(
-            title=f"Chunk Test {uuid4()}",
-            document_type="research_paper",
-            content_hash=f"chunk-test-{uuid4()}",
-            document_metadata={},
-        )
+        async with async_session_factory() as session:
+            document = Document(
+        title=f"Embedding Test {uuid4()}",
+        document_type="research_paper",
+        content_hash=f"embedding-test-{uuid4()}",
+        logical_document_id=uuid4(),
+        version_number=1,
+        is_current=True,
+        document_metadata={},
+    )
 
         session.add(document)
         await session.flush()

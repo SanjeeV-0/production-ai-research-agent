@@ -18,6 +18,9 @@ async def test_document_persistence() -> None:
         document_type="research_paper",
         content_hash=f"test-document-hash-{uuid.uuid4()}",
         document_metadata={"topic": "rag"},
+        logical_document_id=uuid4(),
+        version_number=1,
+        is_current=True,
     )
 
     async with async_session_factory() as session:

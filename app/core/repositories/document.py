@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import (
@@ -184,3 +184,42 @@ class DocumentRepository:
         await self.session.refresh(document)
 
         return document
+
+    async def get_by_logical_and_content_hash(
+        self,
+        logical_document_id: UUID,
+        content_hash: str,
+    ) -> Document | None:
+        result = await self.session.execute(
+            select(Document).where(
+                Document.logical_document_id == logical_document_id,
+                Document.content_hash == content_hash,
+            )
+        )
+
+        return result.scalar_one_or_none()
+
+    async def get_current_version(
+        self,
+        logical_document_id: UUID,
+    ) -> Document | None:
+        result = await self.session.execute(
+            select(Document).where(
+                Document.logical_document_id == logical_document_id,
+                Document.is_current.is_(True),
+            )
+        )
+
+        return result.scalar_one_or_none()
+
+    async def get_latest_version_number(
+        self,
+        logical_document_id: UUID,
+    ) -> int:
+        result = await self.session.execute(
+            select(func.max(Document.version_number)).where(
+                Document.logical_document_id == logical_document_id,
+            )
+        )
+
+        return result.scalar_one() or 0

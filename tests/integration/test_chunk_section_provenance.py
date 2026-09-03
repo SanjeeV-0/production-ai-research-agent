@@ -16,12 +16,16 @@ from app.core.models import (
 @pytest.mark.asyncio
 async def test_chunk_has_section_and_page_provenance() -> None:
     async with async_session_factory() as session:
-        document = Document(
-            title=f"Provenance Test {uuid4()}",
-            document_type="research_paper",
-            content_hash=f"provenance-test-{uuid4()}",
-            document_metadata={},
-        )
+        async with async_session_factory() as session:
+            document = Document(
+        title=f"Embedding Test {uuid4()}",
+        document_type="research_paper",
+        content_hash=f"embedding-test-{uuid4()}",
+        logical_document_id=uuid4(),
+        version_number=1,
+        is_current=True,
+        document_metadata={},
+    )
 
         session.add(document)
         await session.flush()

@@ -16,6 +16,9 @@ async def test_table_fragments_recover_parent_section() -> None:
             title=f"Table Parent Test {uuid4()}",
             document_type="research_paper",
             content_hash=f"table-parent-test-{uuid4()}",
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
             document_metadata={},
         )
 

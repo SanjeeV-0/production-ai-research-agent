@@ -42,6 +42,7 @@ class IngestionService:
         loader: DocumentLoader,
         title: str,
         document_type: str,
+        logical_document_id: UUID | None = None,
         source: str | None = None,
     ) -> Document:
         pages = loader.load(path)
@@ -57,7 +58,8 @@ class IngestionService:
                     source=source,
                     document_type=document_type,
                     content=combined_content,
-                )
+                ),
+                logical_document_id=logical_document_id,
             )
         )
 
@@ -132,7 +134,7 @@ class IngestionService:
 
         except Exception as exc:
             await self.session.rollback()
-            await self.document_service.repository.get_by_id(document_id)
+            
 
             document = await self.document_service.repository.get_by_id(
                 document_id

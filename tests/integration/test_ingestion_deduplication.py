@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -42,13 +43,14 @@ The results are useful for future research.
             session,
             embedding_provider=DeterministicEmbeddingProvider(dimensions=384,),
         )
-
+        logical_document_id = uuid4()
         first_document = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Duplicate Test",
             document_type="research_paper",
             source="integration-test",
+            logical_document_id=logical_document_id,
         )
 
         await session.commit()
@@ -107,6 +109,7 @@ The results are useful for future research.
             title="Duplicate Test",
             document_type="research_paper",
             source="integration-test",
+            logical_document_id=logical_document_id,
         )
 
         await session.commit()

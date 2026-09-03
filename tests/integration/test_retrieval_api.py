@@ -268,6 +268,9 @@ async def test_retrieval_search_real_database() -> None:
             document_type="research_paper",
             content_hash=f"api-retrieval-test-{uuid4()}",
             document_metadata={},
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
         )
 
         session.add(document)
