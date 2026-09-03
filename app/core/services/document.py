@@ -1,6 +1,8 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import Document
+from app.core.models import Document, DocumentStatus
 from app.core.repositories.document import DocumentRepository
 from app.ingestion.normalizer import calculate_content_hash
 from app.ingestion.schemas import DocumentInput
@@ -39,3 +41,51 @@ class DocumentService:
         document = await self.repository.create(document)
 
         return document, True
+
+
+
+    async def mark_processing(
+        self,
+        document: Document,
+    ) -> Document:
+        """Mark a document as actively processing."""
+
+        document.status = DocumentStatus.PROCESSING
+        document.processing_attempt += 1
+        document.processing_started_at = datetime.now(UTC)
+        document.processing_completed_at = None
+        document.failed_at = None
+        document.last_error = None
+
+        return await self.repository.update(document)
+
+    async def mark_ready(
+        self,
+        document: Document,
+    ) -> Document:
+        """Mark a document as successfully processed."""
+
+        now = datetime.now(UTC)
+
+        document.status = DocumentStatus.READY
+        document.processing_completed_at = now
+        document.failed_at = None
+        document.last_error = None
+
+        return await self.repository.update(document)
+
+    async def mark_failed(
+        self,
+        document: Document,
+        error: str,
+    ) -> Document:
+        """Mark a document as failed during processing."""
+
+        now = datetime.now(UTC)
+
+        document.status = DocumentStatus.FAILED
+        document.processing_completed_at = now
+        document.failed_at = now
+        document.last_error = error
+
+        return await self.repository.update(document)

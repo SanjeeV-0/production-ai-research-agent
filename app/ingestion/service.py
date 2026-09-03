@@ -63,51 +63,91 @@ class IngestionService:
 
         if not created:
             return document
+        document_id = document.id
 
-        page_ids: dict[int, UUID] = {}
+        await self.session.commit()
 
-        for page in pages:
-            document_page = DocumentPage(
+        document = await self.document_service.mark_processing(
+            document
+        )
+
+        await self.session.commit()
+
+        try:
+            page_ids: dict[int, UUID] = {}
+
+            for page in pages:
+                document_page = DocumentPage(
+                    document_id=document.id,
+                    page_number=page.page_number,
+                    content=page.content,
+                )
+
+                await self.repository.create_page(
+                    document_page
+                )
+
+                page_ids[page.page_number] = document_page.id
+
+            structural_units = self.structure_extractor.extract(
+                pages
+            )
+
+            section_nodes = self.section_builder.build(
+                structural_units
+            )
+
+            section_map = (
+                await self.section_service.persist_sections(
+                    document.id,
+                    section_nodes,
+                )
+            )
+
+            semantic_units = shred_semantically(
+                structural_units,
+                embedding_provider=self.embedding_provider,
+                threshold=0.7,
+            )
+
+            child_chunks = apply_size_guard(
+                semantic_units,
+                section_map=section_map,
+                max_tokens=500,
+            )
+
+            await self.chunk_service.persist_chunks(
                 document_id=document.id,
-                page_number=page.page_number,
-                content=page.content,
+                page_ids=page_ids,
+                chunks=child_chunks,
             )
 
-            await self.repository.create_page(
-                document_page
+            document = await self.document_service.mark_ready(
+                document
             )
 
-            page_ids[page.page_number] = document_page.id
+            await self.session.commit()
 
-        structural_units = self.structure_extractor.extract(
-            pages
-        )
+            return document
 
-        section_nodes = self.section_builder.build(
-            structural_units
-        )
+        except Exception as exc:
+            await self.session.rollback()
+            await self.document_service.repository.get_by_id(document_id)
 
-        section_map = await self.section_service.persist_sections(
-            document.id,
-            section_nodes,
-        )
+            document = await self.document_service.repository.get_by_id(
+                document_id
+            )
 
-        semantic_units = shred_semantically(
-            structural_units,
-            embedding_provider=self.embedding_provider,
-            threshold=0.7,
-        )
+            if document is None:
+                raise RuntimeError(
+                    "Document disappeared after ingestion failure."
+                ) from exc
 
-        child_chunks = apply_size_guard(
-            semantic_units,
-            section_map=section_map,
-            max_tokens=500,
-        )
+            await self.document_service.mark_failed(
+                document,
+                str(exc),
+            )
 
-        await self.chunk_service.persist_chunks(
-            document_id=document.id,
-            page_ids=page_ids,
-            chunks=child_chunks,
-        )
+            await self.session.commit()
 
-        return document
+            raise

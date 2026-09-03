@@ -175,3 +175,12 @@ class DocumentRepository:
             )
             for chunk, section_path, chunk_distance in rows
         ]
+
+    async def update(self, document: Document) -> Document:
+        """Persist changes to a document."""
+
+        self.session.add(document)
+        await self.session.flush()
+        await self.session.refresh(document)
+
+        return document

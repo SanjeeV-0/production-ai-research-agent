@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from enum import StrEnum
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
@@ -6,6 +7,15 @@ from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class DocumentStatus(StrEnum):
+    """Lifecycle states for an ingested document."""
+
+    UPLOADED = "UPLOADED"
+    PROCESSING = "PROCESSING"
+    READY = "READY"
+    FAILED = "FAILED"
 
 
 class Base(DeclarativeBase):
@@ -53,6 +63,37 @@ class Document(Base):
         unique=True,
         nullable=False,
         index=True,
+    )
+    status: Mapped[DocumentStatus] = mapped_column(
+        String(20),
+        nullable=False,
+        default=DocumentStatus.UPLOADED,
+        index=True,
+    )
+
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    processing_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    processing_attempt: Mapped[int] = mapped_column(
+        nullable=False,
+        default=0,
+    )
+
+    last_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
     )
 
     document_metadata: Mapped[dict] = mapped_column(
