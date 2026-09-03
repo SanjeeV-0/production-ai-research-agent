@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -142,6 +142,52 @@ class Document(Base):
     back_populates="document",
     cascade="all, delete-orphan",
 )
+
+class StoredFile(Base):
+    __tablename__ = "stored_files"
+
+    id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+
+    document_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    original_filename: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
+
+    content_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        index=True,
+    )
+
+    size_bytes: Mapped[int] = mapped_column(
+        nullable=False,
+    )
+
+    storage_key: Mapped[str] = mapped_column(
+        String(1000),
+        nullable=False,
+        unique=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+
+
 
 
 class DocumentPage(Base):
