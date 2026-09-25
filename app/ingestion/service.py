@@ -31,9 +31,10 @@ class IngestionService:
         self.structure_extractor = StructureExtractor()
         self.section_builder = SectionBuilder()
         self.section_service = SectionService(session)
-        self.chunk_service = ChunkService(session,
-         embedding_provider=embedding_provider,
-)
+        self.chunk_service = ChunkService(
+            session,
+            embedding_provider=embedding_provider,
+        )
         self.embedding_provider = embedding_provider
 
     async def ingest_file(
@@ -47,20 +48,16 @@ class IngestionService:
     ) -> Document:
         pages = loader.load(path)
 
-        combined_content = "\n\n".join(
-            page.content for page in pages
-        )
+        combined_content = "\n\n".join(page.content for page in pages)
 
-        document, created = (
-            await self.document_service.ingest_document(
-                DocumentInput(
-                    title=title,
-                    source=source,
-                    document_type=document_type,
-                    content=combined_content,
-                ),
-                logical_document_id=logical_document_id,
-            )
+        document, created = await self.document_service.ingest_document(
+            DocumentInput(
+                title=title,
+                source=source,
+                document_type=document_type,
+                content=combined_content,
+            ),
+            logical_document_id=logical_document_id,
         )
 
         if not created:
@@ -69,9 +66,7 @@ class IngestionService:
 
         await self.session.commit()
 
-        document = await self.document_service.mark_processing(
-            document
-        )
+        document = await self.document_service.mark_processing(document)
 
         await self.session.commit()
 
@@ -85,25 +80,17 @@ class IngestionService:
                     content=page.content,
                 )
 
-                await self.repository.create_page(
-                    document_page
-                )
+                await self.repository.create_page(document_page)
 
                 page_ids[page.page_number] = document_page.id
 
-            structural_units = self.structure_extractor.extract(
-                pages
-            )
+            structural_units = self.structure_extractor.extract(pages)
 
-            section_nodes = self.section_builder.build(
-                structural_units
-            )
+            section_nodes = self.section_builder.build(structural_units)
 
-            section_map = (
-                await self.section_service.persist_sections(
-                    document.id,
-                    section_nodes,
-                )
+            section_map = await self.section_service.persist_sections(
+                document.id,
+                section_nodes,
             )
 
             semantic_units = shred_semantically(
@@ -124,9 +111,7 @@ class IngestionService:
                 chunks=child_chunks,
             )
 
-            document = await self.document_service.mark_ready(
-                document
-            )
+            document = await self.document_service.mark_ready(document)
 
             await self.session.commit()
 
@@ -134,16 +119,11 @@ class IngestionService:
 
         except Exception as exc:
             await self.session.rollback()
-            
 
-            document = await self.document_service.repository.get_by_id(
-                document_id
-            )
+            document = await self.document_service.repository.get_by_id(document_id)
 
             if document is None:
-                raise RuntimeError(
-                    "Document disappeared after ingestion failure."
-                ) from exc
+                raise RuntimeError("Document disappeared after ingestion failure.") from exc
 
             await self.document_service.mark_failed(
                 document,

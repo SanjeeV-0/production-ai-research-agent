@@ -31,7 +31,4 @@ class SentenceTransformerEmbeddingProvider:
             convert_to_numpy=True,
         )
 
-        return [
-            embedding.tolist()
-            for embedding in embeddings
-        ]
+        return [embedding.tolist() for embedding in embeddings]

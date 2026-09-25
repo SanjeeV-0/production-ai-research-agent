@@ -6,9 +6,7 @@ from app.embeddings.testing import (
 def test_embed_text_returns_expected_dimensions() -> None:
     provider = DeterministicEmbeddingProvider(dimensions=16)
 
-    embedding = provider.embed_text(
-        "retrieval augmented generation"
-    )
+    embedding = provider.embed_text("retrieval augmented generation")
 
     assert len(embedding) == 16
 

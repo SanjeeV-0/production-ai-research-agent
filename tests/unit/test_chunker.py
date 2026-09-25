@@ -31,10 +31,7 @@ def test_chunk_preserves_page_provenance() -> None:
         chunk_overlap=5,
     )
 
-    assert any(
-        10 in chunk.page_numbers and 11 in chunk.page_numbers
-        for chunk in chunks
-    )
+    assert any(10 in chunk.page_numbers and 11 in chunk.page_numbers for chunk in chunks)
 
 
 def test_invalid_chunk_size_is_rejected() -> None:

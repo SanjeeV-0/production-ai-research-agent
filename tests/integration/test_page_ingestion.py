@@ -16,17 +16,17 @@ async def test_ingest_file_persists_pages(tmp_path: Path) -> None:
     document_path = tmp_path / "research.md"
 
     document_path.write_text(
-    f"# RAG Research\n\nRetrieval-Augmented Generation content {uuid4()}",
-    encoding="utf-8",
-)
+        f"# RAG Research\n\nRetrieval-Augmented Generation content {uuid4()}",
+        encoding="utf-8",
+    )
 
     async with async_session_factory() as session:
         service = IngestionService(
-    session,
-    embedding_provider=DeterministicEmbeddingProvider(
-    dimensions=384,
-),
-)
+            session,
+            embedding_provider=DeterministicEmbeddingProvider(
+                dimensions=384,
+            ),
+        )
 
         document = await service.ingest_file(
             path=document_path,
@@ -38,15 +38,11 @@ async def test_ingest_file_persists_pages(tmp_path: Path) -> None:
 
         await session.commit()
 
-        
         result = await session.execute(
-            select(DocumentPage).where(
-                DocumentPage.document_id == document.id
-            )
+            select(DocumentPage).where(DocumentPage.document_id == document.id)
         )
 
         page = result.scalar_one()
-        
 
         assert page is not None
         assert page.document_id == document.id

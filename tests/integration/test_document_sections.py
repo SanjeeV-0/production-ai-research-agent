@@ -60,9 +60,7 @@ async def test_document_sections_support_nested_hierarchy() -> None:
 
         result = await session.execute(
             select(DocumentSection)
-            .where(
-                DocumentSection.parent_section_id == introduction.id
-            )
+            .where(DocumentSection.parent_section_id == introduction.id)
             .order_by(DocumentSection.section_index)
         )
 

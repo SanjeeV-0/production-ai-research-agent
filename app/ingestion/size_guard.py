@@ -50,7 +50,7 @@ def _split_hard(
     words = text.split()
 
     return [
-        " ".join(words[index:index + max_tokens])
+        " ".join(words[index : index + max_tokens])
         for index in range(
             0,
             len(words),
@@ -97,10 +97,7 @@ def _split_paragraph(
             )
             continue
 
-        if (
-            current
-            and current_tokens + sentence_tokens > max_tokens
-        ):
+        if current and current_tokens + sentence_tokens > max_tokens:
             chunks.append(" ".join(current))
             current = []
             current_tokens = 0
@@ -152,10 +149,7 @@ def _split_prose_unit(
             )
             continue
 
-        if (
-            current
-            and current_tokens + paragraph_tokens > max_tokens
-        ):
+        if current and current_tokens + paragraph_tokens > max_tokens:
             chunks.append("\n\n".join(current))
             current = []
             current_tokens = 0
@@ -186,10 +180,8 @@ def apply_size_guard(
     3. hard token boundaries
     """
     if max_tokens <= 0:
-        raise ValueError(
-            "max_tokens must be greater than zero"
-        )
-        
+        raise ValueError("max_tokens must be greater than zero")
+
     children: list[ChildChunk] = []
 
     for semantic_unit in semantic_units:
@@ -197,9 +189,7 @@ def apply_size_guard(
 
         if not content:
             continue
-        section_id = section_map.get(
-            semantic_unit.section_path
-        )
+        section_id = section_map.get(semantic_unit.section_path)
 
         if estimate_tokens(content) <= max_tokens:
             children.append(
@@ -218,8 +208,7 @@ def apply_size_guard(
         for unit in semantic_unit.units:
             if unit.unit_type == UnitType.TABLE:
                 raise ValueError(
-                    "Table exceeds size guard; table fragmentation "
-                    "must occur before size guard."
+                    "Table exceeds size guard; table fragmentation must occur before size guard."
                 )
 
             pieces = _split_prose_unit(
@@ -230,14 +219,14 @@ def apply_size_guard(
             for piece in pieces:
                 children.append(
                     ChildChunk(
-    index=len(children),
-    content=piece,
-    page_numbers=list(unit.page_numbers),
-    section_id=section_id,
-    section_path=unit.section_path,
-    section_level=unit.section_level,
-    source_units=(unit,),
-)
+                        index=len(children),
+                        content=piece,
+                        page_numbers=list(unit.page_numbers),
+                        section_id=section_id,
+                        section_path=unit.section_path,
+                        section_level=unit.section_level,
+                        source_units=(unit,),
+                    )
                 )
 
-    return children 
+    return children

@@ -16,4 +16,3 @@ def test_langfuse_disabled_returns_none() -> None:
     finally:
         settings.langfuse_enabled = original_enabled
         get_langfuse.cache_clear()
-

@@ -13,9 +13,7 @@ def test_embed_text_returns_embedding() -> None:
 
     model.encode.return_value = embedding
 
-    provider = SentenceTransformerEmbeddingProvider.__new__(
-        SentenceTransformerEmbeddingProvider
-    )
+    provider = SentenceTransformerEmbeddingProvider.__new__(SentenceTransformerEmbeddingProvider)
     provider.model = model
 
     result = provider.embed_text("retrieval")
@@ -42,14 +40,10 @@ def test_embed_batch_preserves_order() -> None:
         second,
     ]
 
-    provider = SentenceTransformerEmbeddingProvider.__new__(
-        SentenceTransformerEmbeddingProvider
-    )
+    provider = SentenceTransformerEmbeddingProvider.__new__(SentenceTransformerEmbeddingProvider)
     provider.model = model
 
-    result = provider.embed_batch(
-        ["first", "second"]
-    )
+    result = provider.embed_batch(["first", "second"])
 
     assert result == [
         [1.0, 0.0],

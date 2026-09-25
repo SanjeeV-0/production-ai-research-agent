@@ -18,22 +18,20 @@ from app.embeddings.sentence_transformer import (
 async def test_chunk_embedding_can_be_persisted_and_read() -> None:
     provider = SentenceTransformerEmbeddingProvider()
 
-    embedding = provider.embed_text(
-        "Retrieval augmented generation research."
-    )
+    embedding = provider.embed_text("Retrieval augmented generation research.")
 
     assert len(embedding) == 384
 
     async with async_session_factory() as session:
         document = Document(
-        title=f"Embedding Test {uuid4()}",
-        document_type="research_paper",
-        content_hash=f"embedding-test-{uuid4()}",
-        logical_document_id=uuid4(),
-        version_number=1,
-        is_current=True,
-        document_metadata={},
-    )
+            title=f"Embedding Test {uuid4()}",
+            document_type="research_paper",
+            content_hash=f"embedding-test-{uuid4()}",
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
+            document_metadata={},
+        )
 
         session.add(document)
         await session.flush()
@@ -62,11 +60,7 @@ async def test_chunk_embedding_can_be_persisted_and_read() -> None:
         session.add(chunk)
         await session.flush()
 
-        result = await session.execute(
-            select(DocumentChunk).where(
-                DocumentChunk.id == chunk.id
-            )
-        )
+        result = await session.execute(select(DocumentChunk).where(DocumentChunk.id == chunk.id))
 
         stored_chunk = result.scalar_one()
 

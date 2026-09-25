@@ -5,6 +5,7 @@ Revises: 86b2f3d39bfd
 Create Date: 2026-09-03 15:36:54.605284
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -12,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '32b24d0ab7d2'
-down_revision: str | Sequence[str] | None = '86b2f3d39bfd'
+revision: str = "32b24d0ab7d2"
+down_revision: str | Sequence[str] | None = "86b2f3d39bfd"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

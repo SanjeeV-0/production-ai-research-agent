@@ -23,7 +23,6 @@ def test_table_to_markdown() -> None:
     assert "| Model B | 0.89 | 0.78 |" in result
 
 
-
 def test_table_to_markdown_normalizes_short_rows() -> None:
     table = TableData(
         table_id="table_2",

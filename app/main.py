@@ -21,6 +21,7 @@ app = FastAPI(
 app.include_router(retrieval_router)
 app.include_router(research_router)
 
+
 @app.on_event("startup")
 async def startup_event() -> None:
     logger.info("Application started")
@@ -34,6 +35,7 @@ async def health_check() -> dict[str, str]:
         "status": "healthy",
         "environment": settings.environment,
     }
+
 
 @app.get("/health/ready")
 async def readiness_check() -> dict[str, object]:

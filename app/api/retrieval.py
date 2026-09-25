@@ -75,23 +75,14 @@ async def search(
         if trace.context is not None:
             context_response = RetrievalTraceContextResponse(
                 text=trace.context.text,
-                sources=[
-                    _trace_candidate_response(source)
-                    for source in trace.context.sources
-                ],
+                sources=[_trace_candidate_response(source) for source in trace.context.sources],
             )
 
         trace_response = RetrievalTraceResponse(
             query=trace.query,
             candidate_limit=trace.candidate_limit,
-            candidates=[
-                _trace_candidate_response(candidate)
-                for candidate in trace.candidates
-            ],
-            final_results=[
-                _trace_candidate_response(result)
-                for result in trace.final_results
-            ],
+            candidates=[_trace_candidate_response(candidate) for candidate in trace.candidates],
+            final_results=[_trace_candidate_response(result) for result in trace.final_results],
             context=context_response,
         )
 

@@ -54,11 +54,7 @@ def split_table(
             page_numbers=table.page_numbers,
         )
 
-        if (
-            current_rows
-            and _estimate_tokens(table_to_markdown(candidate))
-            > max_tokens
-        ):
+        if current_rows and _estimate_tokens(table_to_markdown(candidate)) > max_tokens:
             fragments.append(current_rows)
             current_rows = [row]
         else:

@@ -10,6 +10,4 @@ def calculate_content_hash(content: str) -> str:
     """Calculate a deterministic SHA-256 hash of normalized document content."""
     normalized_content = normalize_content(content)
 
-    return hashlib.sha256(
-        normalized_content.encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(normalized_content.encode("utf-8")).hexdigest()

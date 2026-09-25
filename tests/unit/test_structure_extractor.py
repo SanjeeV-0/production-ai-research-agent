@@ -26,9 +26,7 @@ def test_extracts_markdown_headings_and_paragraphs() -> None:
     ]
 
     assert units[0].section_path == "Introduction"
-    assert units[2].section_path == (
-        "Introduction > Retrieval"
-    )
+    assert units[2].section_path == ("Introduction > Retrieval")
 
 
 def test_preserves_page_numbers() -> None:
@@ -49,19 +47,12 @@ def test_extracts_lists() -> None:
     pages = [
         LoadedPage(
             page_number=1,
-            content=(
-                "- First item\n"
-                "- Second item\n"
-                "1. Third item"
-            ),
+            content=("- First item\n- Second item\n1. Third item"),
         )
     ]
 
     units = StructureExtractor().extract(pages)
 
-    assert all(
-        unit.unit_type == UnitType.LIST
-        for unit in units
-    )
+    assert all(unit.unit_type == UnitType.LIST for unit in units)
 
     assert len(units) == 3

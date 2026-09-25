@@ -18,6 +18,7 @@ from app.core.models import (
     DocumentChunk,
     DocumentPage,
     DocumentSection,
+    DocumentStatus,
 )
 from app.generation.context import GenerationContext
 from app.generation.service import GenerationResult
@@ -54,10 +55,7 @@ class FakeRetrievalService:
             section_id=uuid4(),
             section_path="Results",
             page_numbers=[1, 2],
-            content=(
-                "Retrieval augmented generation combines "
-                "retrieval with generation."
-            ),
+            content=("Retrieval augmented generation combines retrieval with generation."),
             distance=0.15,
             rerank_score=4.2,
         )
@@ -77,9 +75,7 @@ class FakeRetrievalService:
             self.last_trace = RetrievalTrace(
                 query=query,
                 candidate_limit=(
-                    candidate_limit
-                    if candidate_limit is not None
-                    else max(limit, 50)
+                    candidate_limit if candidate_limit is not None else max(limit, 50)
                 ),
                 candidates=[candidate],
                 final_results=[candidate],
@@ -117,15 +113,10 @@ class FakeGenerationService:
         )
 
 
-
-
-
 def test_retrieval_search_endpoint() -> None:
     """Test the retrieval API response contract."""
 
-    app.dependency_overrides[get_retrieval_service] = (
-        lambda: FakeRetrievalService()
-    )
+    app.dependency_overrides[get_retrieval_service] = lambda: FakeRetrievalService()
 
     client = TestClient(app)
 
@@ -149,8 +140,7 @@ def test_retrieval_search_endpoint() -> None:
         assert result["section_path"] == "Results"
         assert result["page_numbers"] == [1, 2]
         assert (
-            result["content"]
-            == "Retrieval augmented generation combines "
+            result["content"] == "Retrieval augmented generation combines "
             "retrieval with generation."
         )
         assert result["distance"] == 0.15
@@ -168,17 +158,13 @@ def test_retrieval_search_trace_mode() -> None:
 
     retrieval_service = FakeRetrievalService()
 
-    app.dependency_overrides[get_retrieval_service] = (
-        lambda: retrieval_service
-    )
+    app.dependency_overrides[get_retrieval_service] = lambda: retrieval_service
 
     trace_settings = Settings(
         trace_enabled=True,
     )
 
-    app.dependency_overrides[get_app_settings] = (
-        lambda: trace_settings
-    )
+    app.dependency_overrides[get_app_settings] = lambda: trace_settings
 
     client = TestClient(app)
 
@@ -211,9 +197,7 @@ def test_retrieval_search_trace_mode() -> None:
         context = trace["context"]
 
         assert context["text"] == (
-            "[Source 1]\n"
-            "Retrieval augmented generation combines "
-            "retrieval with generation."
+            "[Source 1]\nRetrieval augmented generation combines retrieval with generation."
         )
 
         assert len(context["sources"]) == 1
@@ -221,8 +205,7 @@ def test_retrieval_search_trace_mode() -> None:
         context_source = context["sources"][0]
 
         assert context_source["content"] == (
-            "Retrieval augmented generation combines "
-            "retrieval with generation."
+            "Retrieval augmented generation combines retrieval with generation."
         )
 
         assert context_source["section_path"] == "Results"
@@ -237,9 +220,7 @@ def test_retrieval_search_trace_mode() -> None:
 def test_retrieval_search_rejects_empty_query() -> None:
     """Test validation of an empty retrieval query."""
 
-    app.dependency_overrides[get_retrieval_service] = (
-        lambda: FakeRetrievalService()
-    )
+    app.dependency_overrides[get_retrieval_service] = lambda: FakeRetrievalService()
 
     client = TestClient(app)
 
@@ -271,6 +252,7 @@ async def test_retrieval_search_real_database() -> None:
             logical_document_id=uuid4(),
             version_number=1,
             is_current=True,
+            status=DocumentStatus.READY,
         )
 
         session.add(document)
@@ -300,10 +282,7 @@ async def test_retrieval_search_real_database() -> None:
         page_two = DocumentPage(
             document_id=document.id,
             page_number=2,
-            content=(
-                "The weather forecast predicts "
-                "heavy rain tomorrow."
-            ),
+            content=("The weather forecast predicts heavy rain tomorrow."),
         )
 
         session.add_all([page_one, page_two])
@@ -316,9 +295,7 @@ async def test_retrieval_search_real_database() -> None:
             "information retrieval with language generation."
         )
 
-        unrelated_content = (
-            "The weather forecast predicts heavy rain tomorrow."
-        )
+        unrelated_content = "The weather forecast predicts heavy rain tomorrow."
 
         relevant_chunk = DocumentChunk(
             document_id=document.id,
@@ -326,9 +303,7 @@ async def test_retrieval_search_real_database() -> None:
             chunk_index=0,
             content=relevant_content,
             chunk_metadata={},
-            embedding=embedding_provider.embed_text(
-                relevant_content
-            ),
+            embedding=embedding_provider.embed_text(relevant_content),
         )
 
         unrelated_chunk = DocumentChunk(
@@ -337,9 +312,7 @@ async def test_retrieval_search_real_database() -> None:
             chunk_index=1,
             content=unrelated_content,
             chunk_metadata={},
-            embedding=embedding_provider.embed_text(
-                unrelated_content
-            ),
+            embedding=embedding_provider.embed_text(unrelated_content),
         )
 
         session.add_all(
@@ -395,15 +368,9 @@ async def test_retrieval_search_real_database() -> None:
 
             # Vector retrieval + cross-encoder should put
             # the relevant chunk first.
-            assert (
-                first_result["content"]
-                == relevant_content
-            )
+            assert first_result["content"] == relevant_content
 
-            assert (
-                first_result["section_path"]
-                == "Results"
-            )
+            assert first_result["section_path"] == "Results"
 
             assert first_result["page_numbers"] == [1]
 
@@ -414,10 +381,7 @@ async def test_retrieval_search_real_database() -> None:
             assert first_result["rerank_score"] is not None
             assert second_result["rerank_score"] is not None
 
-            assert (
-                first_result["rerank_score"]
-                >= second_result["rerank_score"]
-            )
+            assert first_result["rerank_score"] >= second_result["rerank_score"]
 
         finally:
             app.dependency_overrides.clear()
@@ -432,12 +396,8 @@ def test_research_ask_endpoint() -> None:
     retrieval_service = FakeRetrievalService()
     generation_service = FakeGenerationService()
 
-    app.dependency_overrides[get_retrieval_service] = (
-        lambda: retrieval_service
-    )
-    app.dependency_overrides[get_generation_service] = (
-        lambda: generation_service
-    )
+    app.dependency_overrides[get_retrieval_service] = lambda: retrieval_service
+    app.dependency_overrides[get_generation_service] = lambda: generation_service
 
     client = TestClient(app)
 
@@ -453,9 +413,7 @@ def test_research_ask_endpoint() -> None:
 
         body = response.json()
 
-        assert body["answer"] == (
-            "RAG combines retrieval with language generation."
-        )
+        assert body["answer"] == ("RAG combines retrieval with language generation.")
         assert body["model"] == "test-model"
 
         assert len(body["sources"]) == 1
@@ -477,12 +435,8 @@ def test_research_ask_trace_mode() -> None:
     retrieval_service = FakeRetrievalService()
     generation_service = FakeGenerationService()
 
-    app.dependency_overrides[get_retrieval_service] = (
-        lambda: retrieval_service
-    )
-    app.dependency_overrides[get_generation_service] = (
-        lambda: generation_service
-    )
+    app.dependency_overrides[get_retrieval_service] = lambda: retrieval_service
+    app.dependency_overrides[get_generation_service] = lambda: generation_service
 
     client = TestClient(app)
 
@@ -499,9 +453,7 @@ def test_research_ask_trace_mode() -> None:
 
         body = response.json()
 
-        assert body["answer"] == (
-            "RAG combines retrieval with language generation."
-        )
+        assert body["answer"] == ("RAG combines retrieval with language generation.")
         assert body["model"] == "test-model"
 
         assert len(body["sources"]) == 1
@@ -511,9 +463,7 @@ def test_research_ask_trace_mode() -> None:
 
         trace = body["trace"]
 
-        assert trace["query"] == (
-            "What is retrieval augmented generation?"
-        )
+        assert trace["query"] == ("What is retrieval augmented generation?")
 
         assert trace["candidate_limit"] == 50
 
@@ -532,9 +482,7 @@ def test_research_ask_trace_mode() -> None:
         assert context is not None
 
         assert context["text"] == (
-            "[Source 1]\n"
-            "Retrieval augmented generation combines "
-            "retrieval with generation."
+            "[Source 1]\nRetrieval augmented generation combines retrieval with generation."
         )
 
         assert len(context["sources"]) == 1
@@ -542,8 +490,7 @@ def test_research_ask_trace_mode() -> None:
         context_source = context["sources"][0]
 
         assert context_source["content"] == (
-            "Retrieval augmented generation combines "
-            "retrieval with generation."
+            "Retrieval augmented generation combines retrieval with generation."
         )
 
         assert context_source["section_path"] == "Results"

@@ -46,12 +46,7 @@ class OpenRouterGenerationProvider:
                 },
                 {
                     "role": "user",
-                    "content": (
-                        f"Research context:\n\n"
-                        f"{context.text}\n\n"
-                        f"Question:\n\n"
-                        f"{query}"
-                    ),
+                    "content": (f"Research context:\n\n{context.text}\n\nQuestion:\n\n{query}"),
                 },
             ],
         )
@@ -59,28 +54,14 @@ class OpenRouterGenerationProvider:
         message = response.choices[0].message.content
 
         if message is None:
-            raise RuntimeError(
-                "OpenRouter returned an empty response."
-            )
+            raise RuntimeError("OpenRouter returned an empty response.")
 
         usage = response.usage
 
         return GenerationResult(
             text=message,
             model=response.model or self.model,
-            input_tokens=(
-                usage.prompt_tokens
-                if usage is not None
-                else None
-            ),
-            output_tokens=(
-                usage.completion_tokens
-                if usage is not None
-                else None
-            ),
-            total_tokens=(
-                usage.total_tokens
-                if usage is not None
-                else None
-            ),
+            input_tokens=(usage.prompt_tokens if usage is not None else None),
+            output_tokens=(usage.completion_tokens if usage is not None else None),
+            total_tokens=(usage.total_tokens if usage is not None else None),
         )

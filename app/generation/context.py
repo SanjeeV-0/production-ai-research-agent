@@ -28,9 +28,7 @@ class ContextAssembler:
 
     def __init__(self, max_characters: int | None = None) -> None:
         if max_characters is not None and max_characters < 0:
-            raise ValueError(
-                "max_characters must be greater than or equal to zero."
-            )
+            raise ValueError("max_characters must be greater than or equal to zero.")
 
         self.max_characters = max_characters
 
@@ -54,8 +52,7 @@ class ContextAssembler:
 
             if (
                 self.max_characters is not None
-                and current_length + additional_length
-                > self.max_characters
+                and current_length + additional_length > self.max_characters
             ):
                 break
 

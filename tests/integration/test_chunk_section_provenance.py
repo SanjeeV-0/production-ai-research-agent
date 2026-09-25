@@ -18,14 +18,14 @@ async def test_chunk_has_section_and_page_provenance() -> None:
     async with async_session_factory() as session:
         async with async_session_factory() as session:
             document = Document(
-        title=f"Embedding Test {uuid4()}",
-        document_type="research_paper",
-        content_hash=f"embedding-test-{uuid4()}",
-        logical_document_id=uuid4(),
-        version_number=1,
-        is_current=True,
-        document_metadata={},
-    )
+                title=f"Embedding Test {uuid4()}",
+                document_type="research_paper",
+                content_hash=f"embedding-test-{uuid4()}",
+                logical_document_id=uuid4(),
+                version_number=1,
+                is_current=True,
+                document_metadata={},
+            )
 
         session.add(document)
         await session.flush()
@@ -84,18 +84,13 @@ async def test_chunk_has_section_and_page_provenance() -> None:
         await session.commit()
 
         result = await session.execute(
-            select(ChunkPageMap).where(
-                ChunkPageMap.chunk_id == chunk.id
-            )
+            select(ChunkPageMap).where(ChunkPageMap.chunk_id == chunk.id)
         )
 
         mappings = result.scalars().all()
 
         assert len(mappings) == 2
-        assert {
-            mapping.document_page_id
-            for mapping in mappings
-        } == {
+        assert {mapping.document_page_id for mapping in mappings} == {
             page_one.id,
             page_two.id,
         }

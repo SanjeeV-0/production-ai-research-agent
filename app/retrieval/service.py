@@ -26,9 +26,7 @@ class RetrievalService:
         self.repository = repository
         self.embedding_provider = embedding_provider
         self.reranker = reranker
-        self.context_assembler = (
-            context_assembler or ContextAssembler()
-        )
+        self.context_assembler = context_assembler or ContextAssembler()
         self.last_trace: RetrievalTrace | None = None
 
     async def search(
@@ -49,9 +47,7 @@ class RetrievalService:
             candidate_limit = max(limit, 50)
 
         if candidate_limit < limit:
-            raise ValueError(
-                "candidate_limit must be greater than or equal to limit."
-            )
+            raise ValueError("candidate_limit must be greater than or equal to limit.")
 
         langfuse = get_langfuse()
 
@@ -74,16 +70,8 @@ class RetrievalService:
                 "limit": limit,
                 "candidate_limit": candidate_limit,
                 "max_distance": max_distance,
-                "document_id": (
-                    str(document_id)
-                    if document_id is not None
-                    else None
-                ),
-                "section_id": (
-                    str(section_id)
-                    if section_id is not None
-                    else None
-                ),
+                "document_id": (str(document_id) if document_id is not None else None),
+                "section_id": (str(section_id) if section_id is not None else None),
             },
         ) as observation:
             try:
@@ -102,25 +90,13 @@ class RetrievalService:
                         "result_count": len(results),
                         "results": [
                             {
-                                "chunk_id": str(
-                                    result.chunk_id
-                                ),
-                                "document_id": str(
-                                    result.document_id
-                                ),
-                                "section_id": str(
-                                    result.section_id
-                                ),
-                                "section_path": (
-                                    result.section_path
-                                ),
-                                "page_numbers": (
-                                    result.page_numbers
-                                ),
+                                "chunk_id": str(result.chunk_id),
+                                "document_id": str(result.document_id),
+                                "section_id": str(result.section_id),
+                                "section_path": (result.section_path),
+                                "page_numbers": (result.page_numbers),
                                 "distance": result.distance,
-                                "rerank_score": (
-                                    result.rerank_score
-                                ),
+                                "rerank_score": (result.rerank_score),
                             }
                             for result in results
                         ],
@@ -148,9 +124,7 @@ class RetrievalService:
     ) -> list[RetrievedChunk]:
         """Execute retrieval without observability concerns."""
 
-        query_embedding = self.embedding_provider.embed_text(
-            query
-        )
+        query_embedding = self.embedding_provider.embed_text(query)
 
         candidates = await self.repository.search_similar_chunks(
             query_embedding=query_embedding,
@@ -174,28 +148,15 @@ class RetrievalService:
             self.last_trace = RetrievalTrace(
                 query=query,
                 candidate_limit=candidate_limit,
-                candidates=[
-                    self._to_trace_candidate(chunk)
-                    for chunk in candidates
-                ],
-                final_results=[
-                    self._to_trace_candidate(chunk)
-                    for chunk in final_results
-                ],
+                candidates=[self._to_trace_candidate(chunk) for chunk in candidates],
+                final_results=[self._to_trace_candidate(chunk) for chunk in final_results],
             )
 
-            generation_context = (
-                self.context_assembler.assemble(
-                    final_results
-                )
-            )
+            generation_context = self.context_assembler.assemble(final_results)
 
             self.last_trace.context = RetrievalTraceContext(
                 text=generation_context.text,
-                sources=[
-                    self._to_trace_candidate(chunk)
-                    for chunk in final_results
-                ],
+                sources=[self._to_trace_candidate(chunk) for chunk in final_results],
             )
 
         return final_results

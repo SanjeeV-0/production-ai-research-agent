@@ -20,9 +20,7 @@ def chunk_pages(
         raise ValueError("chunk_size must be greater than zero")
 
     if chunk_overlap < 0 or chunk_overlap >= chunk_size:
-        raise ValueError(
-            "chunk_overlap must be between zero and chunk_size - 1"
-        )
+        raise ValueError("chunk_overlap must be between zero and chunk_size - 1")
 
     chunks: list[TextChunk] = []
     current_text = ""

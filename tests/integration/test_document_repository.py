@@ -27,9 +27,7 @@ async def test_document_persistence() -> None:
         session.add(document)
         await session.commit()
 
-        result = await session.execute(
-            select(Document).where(Document.id == document.id)
-        )
+        result = await session.execute(select(Document).where(Document.id == document.id))
         stored_document = result.scalar_one()
 
         assert stored_document.title == "Test RAG Paper"

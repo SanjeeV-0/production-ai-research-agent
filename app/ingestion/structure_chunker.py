@@ -20,25 +20,14 @@ def _create_group(
     units: list[StructuralUnit],
 ) -> CandidateGroup:
     """Create a candidate from structural units."""
-    page_numbers = sorted(
-        {
-            page
-            for unit in units
-            for page in unit.page_numbers
-        }
-    )
+    page_numbers = sorted({page for unit in units for page in unit.page_numbers})
 
     return CandidateGroup(
-        content="\n\n".join(
-            unit.content for unit in units if unit.content
-        ),
+        content="\n\n".join(unit.content for unit in units if unit.content),
         page_numbers=page_numbers,
         section_path=units[0].section_path,
         section_level=units[0].section_level,
-        unit_types=[
-            unit.unit_type
-            for unit in units
-        ],
+        unit_types=[unit.unit_type for unit in units],
         metadata={},
     )
 
@@ -85,22 +74,15 @@ def group_structural_units(
                             "content_type": "table",
                             "table_id": fragment.table_id,
                             "table_title": fragment.title,
-                            "table_fragment_index": (
-                                fragment.fragment_index
-                            ),
-                            "table_fragment_count": (
-                                fragment.fragment_count
-                            ),
+                            "table_fragment_index": (fragment.fragment_index),
+                            "table_fragment_count": (fragment.fragment_count),
                         },
                     )
                 )
 
             continue
 
-        if (
-            current_units
-            and unit.section_path != current_units[0].section_path
-        ):
+        if current_units and unit.section_path != current_units[0].section_path:
             flush()
 
         current_units.append(unit)

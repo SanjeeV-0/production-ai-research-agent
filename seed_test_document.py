@@ -124,7 +124,5 @@ async def main() -> None:
 if __name__ == "__main__":
     asyncio.run(
         main(),
-        loop_factory=lambda: asyncio.SelectorEventLoop(
-            selectors.SelectSelector()
-        ),
+        loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector()),
     )

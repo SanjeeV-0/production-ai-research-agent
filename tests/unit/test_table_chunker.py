@@ -65,6 +65,4 @@ def test_fragment_indexes_are_sequential() -> None:
 
     fragments = split_table(table, max_tokens=12)
 
-    assert [f.fragment_index for f in fragments] == list(
-        range(len(fragments))
-    )
+    assert [f.fragment_index for f in fragments] == list(range(len(fragments)))

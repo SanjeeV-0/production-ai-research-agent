@@ -5,6 +5,7 @@ Revises: 7d01a8f0608b
 Create Date: 2026-08-25 13:55:34.073866
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -13,10 +14,11 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '73ec85f9f102'
-down_revision: str | Sequence[str] | None = '7d01a8f0608b'
+revision: str = "73ec85f9f102"
+down_revision: str | Sequence[str] | None = "7d01a8f0608b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
 
 def upgrade() -> None:
     """Upgrade schema."""

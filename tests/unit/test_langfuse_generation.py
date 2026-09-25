@@ -19,12 +19,12 @@ class FakeGenerationProvider:
         self.received_context = context
 
         return GenerationResult(
-    text="Generated answer.",
-    model="fake-model",
-    input_tokens=100,
-    output_tokens=25,
-    total_tokens=125,
-)
+            text="Generated answer.",
+            model="fake-model",
+            input_tokens=100,
+            output_tokens=25,
+            total_tokens=125,
+        )
 
 
 class FakeObservation:

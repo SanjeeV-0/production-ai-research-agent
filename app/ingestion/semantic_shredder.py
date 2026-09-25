@@ -15,22 +15,12 @@ class SemanticUnit:
     @property
     def content(self) -> str:
         """Return the combined textual content."""
-        return "\n\n".join(
-            unit.content
-            for unit in self.units
-            if unit.content
-        )
+        return "\n\n".join(unit.content for unit in self.units if unit.content)
 
     @property
     def page_numbers(self) -> list[int]:
         """Return all source pages represented by the unit."""
-        return sorted(
-            {
-                page
-                for unit in self.units
-                for page in unit.page_numbers
-            }
-        )
+        return sorted({page for unit in self.units for page in unit.page_numbers})
 
     @property
     def section_path(self) -> str:
@@ -55,11 +45,7 @@ def _prose_units(
     units: Sequence[StructuralUnit],
 ) -> list[StructuralUnit]:
     """Extract prose units that require semantic embeddings."""
-    return [
-        unit
-        for unit in units
-        if _is_prose(unit)
-    ]
+    return [unit for unit in units if _is_prose(unit)]
 
 
 def shred_semantically(
@@ -78,9 +64,7 @@ def shred_semantically(
     current: list[StructuralUnit] = []
 
     prose = _prose_units(units)
-    embeddings = embedding_provider.embed_batch(
-        [unit.content for unit in prose]
-    )
+    embeddings = embedding_provider.embed_batch([unit.content for unit in prose])
 
     embedding_by_unit = {
         id(unit): embedding
@@ -93,9 +77,7 @@ def shred_semantically(
 
     def flush() -> None:
         if current:
-            semantic_units.append(
-                SemanticUnit(tuple(current))
-            )
+            semantic_units.append(SemanticUnit(tuple(current)))
             current.clear()
 
     previous_prose: StructuralUnit | None = None
@@ -109,9 +91,7 @@ def shred_semantically(
         if unit.unit_type == UnitType.TABLE:
             flush()
 
-            semantic_units.append(
-                SemanticUnit((unit,))
-            )
+            semantic_units.append(SemanticUnit((unit,)))
 
             previous_prose = None
             continue
@@ -120,9 +100,7 @@ def shred_semantically(
             flush()
             previous_prose = None
 
-            semantic_units.append(
-                SemanticUnit((unit,))
-            )
+            semantic_units.append(SemanticUnit((unit,)))
             continue
 
         if not current:
@@ -130,10 +108,7 @@ def shred_semantically(
             previous_prose = unit
             continue
 
-        if (
-            previous_prose is None
-            or unit.section_path != previous_prose.section_path
-        ):
+        if previous_prose is None or unit.section_path != previous_prose.section_path:
             flush()
             current.append(unit)
             previous_prose = unit

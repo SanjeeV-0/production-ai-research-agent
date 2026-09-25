@@ -5,6 +5,7 @@ Revises: 32b24d0ab7d2
 Create Date: 2026-09-03 17:18:52.119254
 
 """
+
 from collections.abc import Sequence
 from uuid import uuid4
 
@@ -14,8 +15,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '9f0853bbd01b'
-down_revision: str | Sequence[str] | None = '32b24d0ab7d2'
+revision: str = "9f0853bbd01b"
+down_revision: str | Sequence[str] | None = "32b24d0ab7d2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -71,9 +72,7 @@ def upgrade() -> None:
         ),
     )
 
-    rows = connection.execute(
-        sa.select(documents_table.c.id)
-    ).fetchall()
+    rows = connection.execute(sa.select(documents_table.c.id)).fetchall()
 
     for row in rows:
         connection.execute(
@@ -173,4 +172,3 @@ def downgrade() -> None:
     op.drop_column("documents", "is_current")
     op.drop_column("documents", "version_number")
     op.drop_column("documents", "logical_document_id")
- 

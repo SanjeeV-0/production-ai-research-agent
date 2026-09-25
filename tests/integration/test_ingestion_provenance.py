@@ -46,7 +46,9 @@ The results are useful for future research.
     async with async_session_factory() as session:
         service = IngestionService(
             session,
-            embedding_provider=DeterministicEmbeddingProvider(dimensions=384,),
+            embedding_provider=DeterministicEmbeddingProvider(
+                dimensions=384,
+            ),
         )
 
         document = await service.ingest_file(
@@ -64,9 +66,7 @@ The results are useful for future research.
         # --------------------------------------------------
         section_result = await session.execute(
             select(DocumentSection)
-            .where(
-                DocumentSection.document_id == document.id
-            )
+            .where(DocumentSection.document_id == document.id)
             .order_by(
                 DocumentSection.section_level,
                 DocumentSection.section_index,
@@ -77,10 +77,7 @@ The results are useful for future research.
 
         assert len(sections) == 4
 
-        section_by_path = {
-            section.section_path: section
-            for section in sections
-        }
+        section_by_path = {section.section_path: section for section in sections}
 
         assert set(section_by_path) == {
             "Results",
@@ -90,21 +87,13 @@ The results are useful for future research.
         }
 
         results_section = section_by_path["Results"]
-        retrieval_section = section_by_path[
-            "Results > Retrieval"
-        ]
-        evaluation_section = section_by_path[
-            "Results > Evaluation"
-        ]
+        retrieval_section = section_by_path["Results > Retrieval"]
+        evaluation_section = section_by_path["Results > Evaluation"]
         discussion_section = section_by_path["Discussion"]
 
         assert results_section.parent_section_id is None
-        assert retrieval_section.parent_section_id == (
-            results_section.id
-        )
-        assert evaluation_section.parent_section_id == (
-            results_section.id
-        )
+        assert retrieval_section.parent_section_id == (results_section.id)
+        assert evaluation_section.parent_section_id == (results_section.id)
         assert discussion_section.parent_section_id is None
 
         # --------------------------------------------------
@@ -112,9 +101,7 @@ The results are useful for future research.
         # --------------------------------------------------
         page_result = await session.execute(
             select(DocumentPage)
-            .where(
-                DocumentPage.document_id == document.id
-            )
+            .where(DocumentPage.document_id == document.id)
             .order_by(DocumentPage.page_number)
         )
 
@@ -128,9 +115,7 @@ The results are useful for future research.
         # --------------------------------------------------
         chunk_result = await session.execute(
             select(DocumentChunk)
-            .where(
-                DocumentChunk.document_id == document.id
-            )
+            .where(DocumentChunk.document_id == document.id)
             .order_by(DocumentChunk.chunk_index)
         )
 
@@ -139,15 +124,9 @@ The results are useful for future research.
         assert chunks
 
         # Every chunk must point to a real section
-        section_ids = {
-            section.id
-            for section in sections
-        }
+        section_ids = {section.id for section in sections}
 
-        assert all(
-            chunk.section_id in section_ids
-            for chunk in chunks
-        )
+        assert all(chunk.section_id in section_ids for chunk in chunks)
 
         # --------------------------------------------------
         # Section provenance
@@ -155,29 +134,13 @@ The results are useful for future research.
         for chunk in chunks:
             assert chunk.section_id in section_ids
 
-        result_chunks = [
-            chunk
-            for chunk in chunks
-            if chunk.section_id == results_section.id
-        ]
+        result_chunks = [chunk for chunk in chunks if chunk.section_id == results_section.id]
 
-        retrieval_chunks = [
-            chunk
-            for chunk in chunks
-            if chunk.section_id == retrieval_section.id
-        ]
+        retrieval_chunks = [chunk for chunk in chunks if chunk.section_id == retrieval_section.id]
 
-        evaluation_chunks = [
-            chunk
-            for chunk in chunks
-            if chunk.section_id == evaluation_section.id
-        ]
+        evaluation_chunks = [chunk for chunk in chunks if chunk.section_id == evaluation_section.id]
 
-        discussion_chunks = [
-            chunk
-            for chunk in chunks
-            if chunk.section_id == discussion_section.id
-        ]
+        discussion_chunks = [chunk for chunk in chunks if chunk.section_id == discussion_section.id]
 
         assert result_chunks
         assert retrieval_chunks
@@ -193,32 +156,21 @@ The results are useful for future research.
                 DocumentChunk,
                 DocumentChunk.id == ChunkPageMap.chunk_id,
             )
-            .where(
-                DocumentChunk.document_id == document.id
-            )
+            .where(DocumentChunk.document_id == document.id)
         )
 
         mappings = mapping_result.scalars().all()
 
         assert mappings
 
-        assert all(
-            mapping.document_page_id == page.id
-            for mapping in mappings
-        )
+        assert all(mapping.document_page_id == page.id for mapping in mappings)
 
         # --------------------------------------------------
         # Relationship consistency
         # --------------------------------------------------
-        chunk_ids = {
-            chunk.id
-            for chunk in chunks
-        }
+        chunk_ids = {chunk.id for chunk in chunks}
 
-        assert all(
-            mapping.chunk_id in chunk_ids
-            for mapping in mappings
-        )
+        assert all(mapping.chunk_id in chunk_ids for mapping in mappings)
 
         await session.delete(document)
         await session.commit()

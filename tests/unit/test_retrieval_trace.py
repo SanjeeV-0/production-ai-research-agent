@@ -37,13 +37,8 @@ def test_retrieval_trace_can_capture_generation_context() -> None:
     )
 
     assert trace.context is not None
-    assert trace.context.text == (
-        "[Source 1]\nImportant research evidence."
-    )
+    assert trace.context.text == ("[Source 1]\nImportant research evidence.")
 
     assert len(trace.context.sources) == 1
 
-    assert (
-        trace.context.sources[0].chunk_id
-        == chunk_id
-    )
+    assert trace.context.sources[0].chunk_id == chunk_id

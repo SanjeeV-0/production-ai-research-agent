@@ -20,9 +20,7 @@ print(f"Query: {query_text}")
 print(f"Embedding dimensions: {len(embedding)}")
 
 if len(embedding) != 384:
-    raise ValueError(
-        f"Expected 384 dimensions, got {len(embedding)}"
-    )
+    raise ValueError(f"Expected 384 dimensions, got {len(embedding)}")
 
 
 # Convert Python list -> pgvector format

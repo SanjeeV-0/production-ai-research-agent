@@ -50,15 +50,11 @@ def test_large_table_creates_children_under_same_section() -> None:
     ]
 
     groups = group_structural_units(
-    units,
-    table_max_tokens=15,
+        units,
+        table_max_tokens=15,
     )
 
-    table_groups = [
-        group
-        for group in groups
-        if group.metadata.get("content_type") == "table"
-    ]
+    table_groups = [group for group in groups if group.metadata.get("content_type") == "table"]
 
     assert len(table_groups) > 1
 

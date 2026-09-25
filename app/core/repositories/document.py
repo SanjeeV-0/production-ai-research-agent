@@ -9,6 +9,7 @@ from app.core.models import (
     DocumentChunk,
     DocumentPage,
     DocumentSection,
+    DocumentStatus,
 )
 from app.retrieval.models import RetrievedChunk
 
@@ -20,9 +21,7 @@ class DocumentRepository:
         self.session = session
 
     async def get_by_id(self, document_id: UUID) -> Document | None:
-        result = await self.session.execute(
-            select(Document).where(Document.id == document_id)
-        )
+        result = await self.session.execute(select(Document).where(Document.id == document_id))
 
         return result.scalar_one_or_none()
 
@@ -86,9 +85,7 @@ class DocumentRepository:
     ) -> list[RetrievedChunk]:
         """Return chunks ranked by cosine distance."""
 
-        distance = DocumentChunk.embedding.cosine_distance(
-            query_embedding
-        )
+        distance = DocumentChunk.embedding.cosine_distance(query_embedding)
 
         query = (
             select(
@@ -97,32 +94,30 @@ class DocumentRepository:
                 distance.label("distance"),
             )
             .join(
+                Document,
+                DocumentChunk.document_id == Document.id,
+            )
+            .join(
                 DocumentSection,
                 DocumentChunk.section_id == DocumentSection.id,
             )
-            .where(DocumentChunk.embedding.is_not(None))
+            .where(
+                DocumentChunk.embedding.is_not(None),
+                Document.status == DocumentStatus.READY,
+                Document.is_current.is_(True),
+            )
         )
 
         if document_id is not None:
-            query = query.where(
-                DocumentChunk.document_id == document_id
-            )
+            query = query.where(DocumentChunk.document_id == document_id)
 
         if section_id is not None:
-            query = query.where(
-                DocumentChunk.section_id == section_id
-            )
+            query = query.where(DocumentChunk.section_id == section_id)
 
         if max_distance is not None:
-            query = query.where(
-                distance <= max_distance
-            )
+            query = query.where(distance <= max_distance)
 
-        query = (
-            query
-            .order_by(distance)
-            .limit(limit)
-        )
+        query = query.order_by(distance).limit(limit)
 
         result = await self.session.execute(query)
         rows = result.all()
@@ -130,10 +125,7 @@ class DocumentRepository:
         if not rows:
             return []
 
-        chunk_ids = [
-            chunk.id
-            for chunk, _, _ in rows
-        ]
+        chunk_ids = [chunk.id for chunk, _, _ in rows]
 
         page_result = await self.session.execute(
             select(
@@ -144,24 +136,17 @@ class DocumentRepository:
                 DocumentPage,
                 ChunkPageMap.document_page_id == DocumentPage.id,
             )
-            .where(
-                ChunkPageMap.chunk_id.in_(chunk_ids)
-            )
+            .where(ChunkPageMap.chunk_id.in_(chunk_ids))
             .order_by(
                 ChunkPageMap.chunk_id,
                 DocumentPage.page_number,
             )
         )
 
-        page_numbers_by_chunk: dict[UUID, list[int]] = {
-            chunk_id: []
-            for chunk_id in chunk_ids
-        }
+        page_numbers_by_chunk: dict[UUID, list[int]] = {chunk_id: [] for chunk_id in chunk_ids}
 
         for chunk_id, page_number in page_result.all():
-            page_numbers_by_chunk[chunk_id].append(
-                page_number
-            )
+            page_numbers_by_chunk[chunk_id].append(page_number)
 
         return [
             RetrievedChunk(

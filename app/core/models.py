@@ -59,25 +59,25 @@ class Document(Base):
     )
 
     logical_document_id: Mapped[UUID] = mapped_column(
-    PostgreSQLUUID(as_uuid=True),
-    nullable=False,
-    index=True,
-)
+        PostgreSQLUUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
     content_hash: Mapped[str] = mapped_column(
-    String(64),
-    nullable=False,
-    index=True,
-)
+        String(64),
+        nullable=False,
+        index=True,
+    )
 
     version_number: Mapped[int] = mapped_column(
-    nullable=False,
-)
+        nullable=False,
+    )
 
     is_current: Mapped[bool] = mapped_column(
-    nullable=False,
-    default=False,
-    index=True,
-)
+        nullable=False,
+        default=False,
+        index=True,
+    )
     status: Mapped[DocumentStatus] = mapped_column(
         String(20),
         nullable=False,
@@ -111,11 +111,11 @@ class Document(Base):
     )
 
     document_metadata: Mapped[dict] = mapped_column(
-    "metadata",
-    JSONB,
-    nullable=False,
-    default=dict,
-)
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -131,17 +131,18 @@ class Document(Base):
     )
 
     pages: Mapped[list["DocumentPage"]] = relationship(
-    back_populates="document",
-    cascade="all, delete-orphan",
-)
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
     chunks: Mapped[list["DocumentChunk"]] = relationship(
-    back_populates="document",
-    cascade="all, delete-orphan",
-)
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
     sections: Mapped[list["DocumentSection"]] = relationship(
-    back_populates="document",
-    cascade="all, delete-orphan",
-)
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
 
 class StoredFile(Base):
     __tablename__ = "stored_files"
@@ -188,8 +189,6 @@ class StoredFile(Base):
     )
 
 
-
-
 class DocumentPage(Base):
     """Extracted page-level content belonging to a document."""
 
@@ -221,9 +220,9 @@ class DocumentPage(Base):
         back_populates="pages",
     )
     chunk_mappings: Mapped[list["ChunkPageMap"]] = relationship(
-    back_populates="document_page",
-    cascade="all, delete-orphan",
-)
+        back_populates="document_page",
+        cascade="all, delete-orphan",
+    )
 
 
 class DocumentSection(Base):
@@ -295,7 +294,6 @@ class DocumentSection(Base):
     )
 
 
-
 class DocumentChunk(Base):
     """A searchable chunk derived from document content."""
 
@@ -338,18 +336,18 @@ class DocumentChunk(Base):
         cascade="all, delete-orphan",
     )
     section_id: Mapped[UUID] = mapped_column(
-    PostgreSQLUUID(as_uuid=True),
-    ForeignKey("document_sections.id", ondelete="CASCADE"),
-    nullable=False,
-    index=True,
-)
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_sections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     section: Mapped["DocumentSection"] = relationship(
-    back_populates="chunks",
-)
+        back_populates="chunks",
+    )
     embedding: Mapped[list[float] | None] = mapped_column(
-    Vector(384),
-    nullable=True,
-)
+        Vector(384),
+        nullable=True,
+    )
 
 
 class ChunkPageMap(Base):
@@ -376,4 +374,3 @@ class ChunkPageMap(Base):
     document_page: Mapped["DocumentPage"] = relationship(
         back_populates="chunk_mappings",
     )
-   

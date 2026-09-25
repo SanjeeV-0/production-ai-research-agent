@@ -14,9 +14,7 @@ class SectionMap:
     ) -> None:
         """Associate a section path with its database ID."""
         if section_path in self._mapping:
-            raise ValueError(
-                f"Section path already exists: {section_path}"
-            )
+            raise ValueError(f"Section path already exists: {section_path}")
 
         self._mapping[section_path] = section_id
 
@@ -25,9 +23,7 @@ class SectionMap:
         try:
             return self._mapping[section_path]
         except KeyError as exc:
-            raise KeyError(
-                f"Unknown section path: {section_path}"
-            ) from exc
+            raise KeyError(f"Unknown section path: {section_path}") from exc
 
     def __contains__(self, section_path: str) -> bool:
         """Return whether a section path exists."""

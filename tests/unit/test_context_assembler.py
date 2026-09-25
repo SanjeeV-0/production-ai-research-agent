@@ -27,15 +27,10 @@ def test_context_assembler_preserves_chunk_order() -> None:
 
     assembler = ContextAssembler()
 
-    context = assembler.assemble(
-        [first, second]
-    )
+    context = assembler.assemble([first, second])
 
     assert context.text == (
-        "[Source 1]\n"
-        "First retrieved chunk.\n\n"
-        "[Source 2]\n"
-        "Second retrieved chunk."
+        "[Source 1]\nFirst retrieved chunk.\n\n[Source 2]\nSecond retrieved chunk."
     )
 
     assert len(context.sources) == 2
@@ -62,27 +57,14 @@ def test_context_assembler_respects_character_budget() -> None:
     third = _chunk("Third chunk.", 3)
 
     assembler = ContextAssembler(
-        max_characters=len(
-            "[Source 1]\nFirst chunk.\n\n"
-            "[Source 2]\nSecond chunk."
-        )
+        max_characters=len("[Source 1]\nFirst chunk.\n\n[Source 2]\nSecond chunk.")
     )
 
-    context = assembler.assemble(
-        [first, second, third]
-    )
+    context = assembler.assemble([first, second, third])
 
-    assert context.text == (
-        "[Source 1]\n"
-        "First chunk.\n\n"
-        "[Source 2]\n"
-        "Second chunk."
-    )
+    assert context.text == ("[Source 1]\nFirst chunk.\n\n[Source 2]\nSecond chunk.")
 
-    assert [
-        source.chunk_id
-        for source in context.sources
-    ] == [
+    assert [source.chunk_id for source in context.sources] == [
         first.chunk_id,
         second.chunk_id,
     ]
@@ -92,18 +74,11 @@ def test_context_assembler_never_partially_includes_chunk() -> None:
     first = _chunk("A" * 20, 1)
     second = _chunk("B" * 100, 2)
 
-    assembler = ContextAssembler(
-        max_characters=len("[Source 1]\n" + ("A" * 20))
-    )
+    assembler = ContextAssembler(max_characters=len("[Source 1]\n" + ("A" * 20)))
 
-    context = assembler.assemble(
-        [first, second]
-    )
+    context = assembler.assemble([first, second])
 
-    assert context.text == (
-        "[Source 1]\n"
-        + ("A" * 20)
-    )
+    assert context.text == ("[Source 1]\n" + ("A" * 20))
 
     assert len(context.sources) == 1
     assert context.sources[0].chunk_id == first.chunk_id

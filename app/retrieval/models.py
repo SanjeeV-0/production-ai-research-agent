@@ -15,7 +15,6 @@ class RetrievedChunk:
     distance: float
     rerank_score: float | None = None
 
-
     @property
     def similarity(self) -> float:
         """Return cosine similarity derived from cosine distance."""

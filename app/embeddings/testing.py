@@ -19,37 +19,25 @@ class DeterministicEmbeddingProvider(EmbeddingProvider):
         values: list[float] = []
 
         for index in range(self.dimensions):
-            digest = hashlib.sha256(
-                f"{index}:{text}".encode()
-            ).digest()
+            digest = hashlib.sha256(f"{index}:{text}".encode()).digest()
 
             value = int.from_bytes(
                 digest[:8],
                 byteorder="big",
             )
 
-            values.append(
-                (value / 2**64) * 2 - 1
-            )
+            values.append((value / 2**64) * 2 - 1)
 
-        norm = math.sqrt(
-            sum(value * value for value in values)
-        )
+        norm = math.sqrt(sum(value * value for value in values))
 
         if norm == 0:
             return [0.0] * self.dimensions
 
-        return [
-            value / norm
-            for value in values
-        ]
+        return [value / norm for value in values]
 
     def embed_batch(
         self,
         texts: Sequence[str],
     ) -> list[list[float]]:
         """Generate embeddings for multiple texts."""
-        return [
-            self.embed_text(text)
-            for text in texts
-        ]
+        return [self.embed_text(text) for text in texts]

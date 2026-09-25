@@ -15,14 +15,14 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
     async with async_session_factory() as session:
         async with async_session_factory() as session:
             document = Document(
-        title=f"Embedding Test {uuid4()}",
-        document_type="research_paper",
-        content_hash=f"embedding-test-{uuid4()}",
-        logical_document_id=uuid4(),
-        version_number=1,
-        is_current=True,
-        document_metadata={},
-    )
+                title=f"Embedding Test {uuid4()}",
+                document_type="research_paper",
+                content_hash=f"embedding-test-{uuid4()}",
+                logical_document_id=uuid4(),
+                version_number=1,
+                is_current=True,
+                document_metadata={},
+            )
 
         session.add(document)
         await session.flush()
@@ -45,7 +45,7 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
             section_level=1,
             section_index=0,
             section_metadata={},
-)
+        )
 
         session.add(section)
         await session.flush()
@@ -77,14 +77,14 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
                 section_level=1,
                 source_units=(),
             ),
-                    ]
+        ]
 
         service = ChunkService(
-    session,
-    embedding_provider=DeterministicEmbeddingProvider(
-        dimensions=384,
-    ),
-)
+            session,
+            embedding_provider=DeterministicEmbeddingProvider(
+                dimensions=384,
+            ),
+        )
 
         persisted_chunks = await service.persist_chunks(
             document_id=document.id,
@@ -97,18 +97,13 @@ async def test_persist_chunks_maps_chunks_to_multiple_pages() -> None:
         assert len(persisted_chunks) == 2
 
         result = await session.execute(
-            select(ChunkPageMap).where(
-                ChunkPageMap.chunk_id == persisted_chunks[1].id
-            )
+            select(ChunkPageMap).where(ChunkPageMap.chunk_id == persisted_chunks[1].id)
         )
 
         mappings = result.scalars().all()
 
         assert len(mappings) == 2
-        assert {
-            mapping.document_page_id
-            for mapping in mappings
-        } == {
+        assert {mapping.document_page_id for mapping in mappings} == {
             page_one.id,
             page_two.id,
         }

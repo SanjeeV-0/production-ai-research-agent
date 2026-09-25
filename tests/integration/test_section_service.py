@@ -60,9 +60,7 @@ async def test_persist_sections_builds_parent_relationships() -> None:
 
         results = await session.execute(
             select(DocumentSection)
-            .where(
-                DocumentSection.document_id == document.id
-            )
+            .where(DocumentSection.document_id == document.id)
             .order_by(
                 DocumentSection.section_level,
                 DocumentSection.section_index,
@@ -83,14 +81,8 @@ async def test_persist_sections_builds_parent_relationships() -> None:
         assert evaluation.parent_section_id == root.id
 
         assert section_map.get("Results") == root.id
-        assert (
-            section_map.get("Results > Retrieval")
-            == retrieval.id
-        )
-        assert (
-            section_map.get("Results > Evaluation")
-            == evaluation.id
-        )
+        assert section_map.get("Results > Retrieval") == retrieval.id
+        assert section_map.get("Results > Evaluation") == evaluation.id
 
         await session.delete(document)
         await session.commit()

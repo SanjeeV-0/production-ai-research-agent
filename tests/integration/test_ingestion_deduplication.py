@@ -41,7 +41,9 @@ The results are useful for future research.
     async with async_session_factory() as session:
         service = IngestionService(
             session,
-            embedding_provider=DeterministicEmbeddingProvider(dimensions=384,),
+            embedding_provider=DeterministicEmbeddingProvider(
+                dimensions=384,
+            ),
         )
         logical_document_id = uuid4()
         first_document = await service.ingest_file(
@@ -59,28 +61,19 @@ The results are useful for future research.
         page_count_result = await session.execute(
             select(func.count())
             .select_from(DocumentPage)
-            .where(
-                DocumentPage.document_id
-                == first_document.id
-            )
+            .where(DocumentPage.document_id == first_document.id)
         )
 
         section_count_result = await session.execute(
             select(func.count())
             .select_from(DocumentSection)
-            .where(
-                DocumentSection.document_id
-                == first_document.id
-            )
+            .where(DocumentSection.document_id == first_document.id)
         )
 
         chunk_count_result = await session.execute(
             select(func.count())
             .select_from(DocumentChunk)
-            .where(
-                DocumentChunk.document_id
-                == first_document.id
-            )
+            .where(DocumentChunk.document_id == first_document.id)
         )
 
         mapping_count_result = await session.execute(
@@ -88,13 +81,9 @@ The results are useful for future research.
             .select_from(ChunkPageMap)
             .join(
                 DocumentChunk,
-                DocumentChunk.id
-                == ChunkPageMap.chunk_id,
+                DocumentChunk.id == ChunkPageMap.chunk_id,
             )
-            .where(
-                DocumentChunk.document_id
-                == first_document.id
-            )
+            .where(DocumentChunk.document_id == first_document.id)
         )
 
         page_count = page_count_result.scalar_one()
@@ -120,28 +109,19 @@ The results are useful for future research.
         page_count_after = await session.execute(
             select(func.count())
             .select_from(DocumentPage)
-            .where(
-                DocumentPage.document_id
-                == first_document.id
-            )
+            .where(DocumentPage.document_id == first_document.id)
         )
 
         section_count_after = await session.execute(
             select(func.count())
             .select_from(DocumentSection)
-            .where(
-                DocumentSection.document_id
-                == first_document.id
-            )
+            .where(DocumentSection.document_id == first_document.id)
         )
 
         chunk_count_after = await session.execute(
             select(func.count())
             .select_from(DocumentChunk)
-            .where(
-                DocumentChunk.document_id
-                == first_document.id
-            )
+            .where(DocumentChunk.document_id == first_document.id)
         )
 
         mapping_count_after = await session.execute(
@@ -149,25 +129,15 @@ The results are useful for future research.
             .select_from(ChunkPageMap)
             .join(
                 DocumentChunk,
-                DocumentChunk.id
-                == ChunkPageMap.chunk_id,
+                DocumentChunk.id == ChunkPageMap.chunk_id,
             )
-            .where(
-                DocumentChunk.document_id
-                == first_document.id
-            )
+            .where(DocumentChunk.document_id == first_document.id)
         )
 
         assert page_count_after.scalar_one() == page_count
-        assert (
-            section_count_after.scalar_one()
-            == section_count
-        )
+        assert section_count_after.scalar_one() == section_count
         assert chunk_count_after.scalar_one() == chunk_count
-        assert (
-            mapping_count_after.scalar_one()
-            == mapping_count
-        )
+        assert mapping_count_after.scalar_one() == mapping_count
 
         await session.delete(first_document)
         await session.commit()

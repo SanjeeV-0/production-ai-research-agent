@@ -30,14 +30,11 @@ class ChunkService:
         if not chunks:
             return []
 
-        embeddings = self.embedding_provider.embed_batch(
-            [chunk.content for chunk in chunks]
-        )
+        embeddings = self.embedding_provider.embed_batch([chunk.content for chunk in chunks])
 
         if len(embeddings) != len(chunks):
             raise ValueError(
-                "Embedding provider returned a different number "
-                "of embeddings than chunks."
+                "Embedding provider returned a different number of embeddings than chunks."
             )
 
         persisted_chunks: list[DocumentChunk] = []
@@ -59,9 +56,7 @@ class ChunkService:
                 embedding=embedding,
             )
 
-            await self.repository.create_chunk(
-                document_chunk
-            )
+            await self.repository.create_chunk(document_chunk)
 
             for page_number in chunk.page_numbers:
                 page_id = page_ids[page_number]
@@ -71,9 +66,7 @@ class ChunkService:
                     document_page_id=page_id,
                 )
 
-                await self.repository.create_chunk_page_mapping(
-                    mapping
-                )
+                await self.repository.create_chunk_page_mapping(mapping)
 
             persisted_chunks.append(document_chunk)
 

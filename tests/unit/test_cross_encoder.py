@@ -22,9 +22,7 @@ class FakeCrossEncoder:
 
 
 def test_cross_encoder_reranks_by_score() -> None:
-    reranker = CrossEncoderReranker.__new__(
-        CrossEncoderReranker
-    )
+    reranker = CrossEncoderReranker.__new__(CrossEncoderReranker)
 
     reranker.model = FakeCrossEncoder()
 
@@ -60,9 +58,7 @@ def test_cross_encoder_reranks_by_score() -> None:
 
 
 def test_cross_encoder_returns_empty_for_no_candidates() -> None:
-    reranker = CrossEncoderReranker.__new__(
-        CrossEncoderReranker
-    )
+    reranker = CrossEncoderReranker.__new__(CrossEncoderReranker)
 
     reranker.model = FakeCrossEncoder()
 

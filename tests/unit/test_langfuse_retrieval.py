@@ -150,15 +150,9 @@ async def test_retrieval_creates_langfuse_observation(
     assert observation.output is not None
     assert observation.output["result_count"] == 1
 
-    assert (
-        observation.output["results"][0]["section_path"]
-        == "Results"
-    )
+    assert observation.output["results"][0]["section_path"] == "Results"
 
-    assert (
-        observation.output["results"][0]["distance"]
-        == 0.1
-    )
+    assert observation.output["results"][0]["distance"] == 0.1
 
 
 @pytest.mark.asyncio
@@ -182,6 +176,4 @@ async def test_retrieval_without_langfuse_still_works(
     )
 
     assert len(results) == 1
-    assert results[0].content == (
-        "Relevant research content."
-    )
+    assert results[0].content == ("Relevant research content.")

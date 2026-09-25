@@ -144,19 +144,11 @@ async def test_retrieval_service_trace_contains_generation_context() -> None:
 
     assert trace.context is not None
 
-    assert trace.context.text == (
-        "[Source 1]\n"
-        "chunk 3\n\n"
-        "[Source 2]\n"
-        "chunk 2"
-    )
+    assert trace.context.text == ("[Source 1]\nchunk 3\n\n[Source 2]\nchunk 2")
 
     assert len(trace.context.sources) == 2
 
-    assert [
-        source.chunk_id
-        for source in trace.context.sources
-    ] == [
+    assert [source.chunk_id for source in trace.context.sources] == [
         chunks[2].chunk_id,
         chunks[1].chunk_id,
     ]

@@ -32,11 +32,7 @@ class SectionBuilder:
             if not path or path in section_by_path:
                 continue
 
-            parts = [
-                part.strip()
-                for part in path.split(">")
-                if part.strip()
-            ]
+            parts = [part.strip() for part in path.split(">") if part.strip()]
 
             if not parts:
                 continue
@@ -45,17 +41,13 @@ class SectionBuilder:
 
             for level, title in enumerate(parts, start=1):
                 current_path_parts.append(title)
-                current_path = " > ".join(
-                    current_path_parts
-                )
+                current_path = " > ".join(current_path_parts)
 
                 if current_path in section_by_path:
                     continue
 
                 parent_path = (
-                    " > ".join(current_path_parts[:-1])
-                    if len(current_path_parts) > 1
-                    else None
+                    " > ".join(current_path_parts[:-1]) if len(current_path_parts) > 1 else None
                 )
 
                 index = sibling_counters.get(

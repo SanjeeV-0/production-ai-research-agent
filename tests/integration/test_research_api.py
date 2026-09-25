@@ -63,13 +63,9 @@ class FakeGenerationService:
 async def test_research_ask_endpoint() -> None:
     generation_service = FakeGenerationService()
 
-    app.dependency_overrides[get_retrieval_service] = (
-        lambda: FakeRetrievalService()
-    )
+    app.dependency_overrides[get_retrieval_service] = lambda: FakeRetrievalService()
 
-    app.dependency_overrides[get_generation_service] = (
-        lambda: generation_service
-    )
+    app.dependency_overrides[get_generation_service] = lambda: generation_service
 
     try:
         transport = ASGITransport(app=app)
@@ -89,9 +85,7 @@ async def test_research_ask_endpoint() -> None:
 
         body = response.json()
 
-        assert body["answer"] == (
-            "RAG retrieves relevant information before generation."
-        )
+        assert body["answer"] == ("RAG retrieves relevant information before generation.")
 
         assert body["model"] == "fake-model"
 
@@ -100,10 +94,7 @@ async def test_research_ask_endpoint() -> None:
 
         assert generation_service.received_query == "What is RAG?"
 
-        assert (
-            "RAG retrieves relevant information"
-            in generation_service.received_context.text
-        )
+        assert "RAG retrieves relevant information" in generation_service.received_context.text
 
     finally:
         app.dependency_overrides.clear()

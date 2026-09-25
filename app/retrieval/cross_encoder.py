@@ -24,10 +24,7 @@ class CrossEncoderReranker:
         if not chunks:
             return []
 
-        pairs = [
-            (query, chunk.content)
-            for chunk in chunks
-        ]
+        pairs = [(query, chunk.content) for chunk in chunks]
 
         scores = self.model.predict(pairs)
 

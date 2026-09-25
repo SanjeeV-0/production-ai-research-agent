@@ -25,25 +25,17 @@ class DocumentService:
         if logical_document_id is None:
             logical_document_id = uuid4()
 
-        content_hash = calculate_content_hash(
-            document_input.content
-        )
+        content_hash = calculate_content_hash(document_input.content)
 
-        existing_document = (
-            await self.repository.get_by_logical_and_content_hash(
-                logical_document_id=logical_document_id,
-                content_hash=content_hash,
-            )
+        existing_document = await self.repository.get_by_logical_and_content_hash(
+            logical_document_id=logical_document_id,
+            content_hash=content_hash,
         )
 
         if existing_document is not None:
             return existing_document, False
 
-        latest_version_number = (
-            await self.repository.get_latest_version_number(
-                logical_document_id
-            )
-        )
+        latest_version_number = await self.repository.get_latest_version_number(logical_document_id)
 
         document = Document(
             title=document_input.title,
@@ -85,14 +77,9 @@ class DocumentService:
     ) -> Document:
         """Mark a version ready and make it the current version."""
 
-        current_document = await self.repository.get_current_version(
-            document.logical_document_id
-        )
+        current_document = await self.repository.get_current_version(document.logical_document_id)
 
-        if (
-            current_document is not None
-            and current_document.id != document.id
-        ):
+        if current_document is not None and current_document.id != document.id:
             current_document.is_current = False
             await self.repository.update(current_document)
 

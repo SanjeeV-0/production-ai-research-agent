@@ -23,20 +23,16 @@ async def test_ingest_document_deduplicates_content() -> None:
 
         logical_document_id = uuid4()
 
-        first_document, first_created = (
-            await service.ingest_document(
-                document_input,
-                logical_document_id=logical_document_id,
-            )
+        first_document, first_created = await service.ingest_document(
+            document_input,
+            logical_document_id=logical_document_id,
         )
 
         await session.commit()
 
-        second_document, second_created = (
-            await service.ingest_document(
-                document_input,
-                logical_document_id=logical_document_id,
-            )
+        second_document, second_created = await service.ingest_document(
+            document_input,
+            logical_document_id=logical_document_id,
         )
 
         await session.commit()
@@ -237,7 +233,6 @@ async def test_failed_new_version_preserves_current_version() -> None:
         await session.commit()
 
 
-
 @pytest.mark.asyncio
 async def test_failed_version_can_be_retried_without_creating_new_version() -> None:
     logical_document_id = uuid4()
@@ -295,7 +290,6 @@ async def test_failed_version_can_be_retried_without_creating_new_version() -> N
         await session.commit()
 
 
-
 @pytest.mark.asyncio
 async def test_processing_version_is_reused_without_creating_new_version() -> None:
     logical_document_id = uuid4()
@@ -347,11 +341,9 @@ async def test_processing_version_is_reused_without_creating_new_version() -> No
         assert second_document.status == DocumentStatus.PROCESSING
         assert second_document.processing_attempt == 1
 
-        duplicate_document, duplicate_created = (
-            await service.ingest_document(
-                second_input,
-                logical_document_id=logical_document_id,
-            )
+        duplicate_document, duplicate_created = await service.ingest_document(
+            second_input,
+            logical_document_id=logical_document_id,
         )
         await session.commit()
 

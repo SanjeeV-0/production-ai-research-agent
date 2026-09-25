@@ -22,19 +22,12 @@ def cosine_similarity(
         raise ValueError("Vectors must not be empty.")
 
     dot_product = sum(
-        left_value * right_value
-        for left_value, right_value in zip(left,
-                                            right,
-                                            strict=True)
+        left_value * right_value for left_value, right_value in zip(left, right, strict=True)
     )
 
-    left_norm = sqrt(
-        sum(value * value for value in left)
-    )
+    left_norm = sqrt(sum(value * value for value in left))
 
-    right_norm = sqrt(
-        sum(value * value for value in right)
-    )
+    right_norm = sqrt(sum(value * value for value in right))
 
     if left_norm == 0 or right_norm == 0:
         return 0.0

@@ -14,6 +14,7 @@ def configure_logging() -> None:
         force=True,
     )
 
+
 # So the purpose of the whole function is:
 
 # Configure the application's logging behavior from your settings,

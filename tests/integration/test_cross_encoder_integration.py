@@ -23,13 +23,10 @@ def test_real_cross_encoder_reranks_candidates() -> None:
     reranker = CrossEncoderReranker()
 
     relevant = _chunk(
-        "Retrieval augmented generation retrieves relevant "
-        "documents before generating an answer."
+        "Retrieval augmented generation retrieves relevant documents before generating an answer."
     )
 
-    unrelated = _chunk(
-        "The weather forecast predicts rain tomorrow."
-    )
+    unrelated = _chunk("The weather forecast predicts rain tomorrow.")
 
     results = reranker.rerank(
         "retrieval augmented generation",
@@ -40,7 +37,4 @@ def test_real_cross_encoder_reranks_candidates() -> None:
     assert results[0].content == relevant.content
     assert results[0].rerank_score is not None
     assert results[1].rerank_score is not None
-    assert (
-        results[0].rerank_score
-        > results[1].rerank_score
-    )
+    assert results[0].rerank_score > results[1].rerank_score

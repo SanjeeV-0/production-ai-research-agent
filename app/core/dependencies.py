@@ -75,9 +75,7 @@ def get_generation_provider() -> OpenRouterGenerationProvider:
     settings = get_settings()
 
     if not settings.openrouter_api_key:
-        raise ValueError(
-            "OPENROUTER_API_KEY must be configured."
-        )
+        raise ValueError("OPENROUTER_API_KEY must be configured.")
 
     return OpenRouterGenerationProvider(
         api_key=settings.openrouter_api_key,

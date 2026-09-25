@@ -26,9 +26,7 @@ class SectionService:
             parent_section_id = None
 
             if node.parent_path is not None:
-                parent_section_id = section_map.get(
-                    node.parent_path
-                )
+                parent_section_id = section_map.get(node.parent_path)
 
             section = DocumentSection(
                 document_id=document_id,

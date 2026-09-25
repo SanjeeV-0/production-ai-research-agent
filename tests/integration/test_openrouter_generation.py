@@ -11,9 +11,7 @@ async def test_real_openrouter_generation() -> None:
     settings = get_settings()
 
     if not settings.openrouter_api_key:
-        pytest.skip(
-            "OPENROUTER_API_KEY is not configured."
-        )
+        pytest.skip("OPENROUTER_API_KEY is not configured.")
 
     provider = OpenRouterGenerationProvider(
         api_key=settings.openrouter_api_key,
@@ -36,7 +34,4 @@ async def test_real_openrouter_generation() -> None:
     assert result.output_tokens is not None
     assert result.total_tokens is not None
 
-    assert result.total_tokens >= (
-        result.input_tokens
-        + result.output_tokens
-    )
+    assert result.total_tokens >= (result.input_tokens + result.output_tokens)

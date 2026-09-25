@@ -19,8 +19,7 @@ async def test_ingestion_service_deduplicates_content(
     document_path = tmp_path / "research.md"
 
     document_path.write_text(
-        f"# RAG Research\n\n"
-        f"Retrieval-Augmented Generation content {uuid4()}",
+        f"# RAG Research\n\nRetrieval-Augmented Generation content {uuid4()}",
         encoding="utf-8",
     )
 
@@ -39,7 +38,7 @@ async def test_ingestion_service_deduplicates_content(
             title="Test Research Paper",
             document_type="research_paper",
             source="integration-test",
-             logical_document_id=logical_document_id,
+            logical_document_id=logical_document_id,
         )
 
         await session.commit()
@@ -50,7 +49,7 @@ async def test_ingestion_service_deduplicates_content(
             title="Test Research Paper",
             document_type="research_paper",
             source="integration-test",
-             logical_document_id=logical_document_id,
+            logical_document_id=logical_document_id,
         )
 
         await session.commit()
@@ -68,8 +67,7 @@ async def test_ingestion_service_marks_document_ready(
     document_path = tmp_path / "research.md"
 
     document_path.write_text(
-        "# RAG Research\n\n"
-        f"Retrieval content {uuid4()}",
+        f"# RAG Research\n\nRetrieval content {uuid4()}",
         encoding="utf-8",
     )
 
@@ -104,10 +102,7 @@ async def test_ingestion_service_marks_document_ready(
 async def test_ingestion_service_marks_failed_and_rolls_back_processing(
     tmp_path: Path,
 ) -> None:
-    content = (
-        "# RAG Research\n\n"
-        f"Retrieval content {uuid4()}"
-    )
+    content = f"# RAG Research\n\nRetrieval content {uuid4()}"
 
     document_path = tmp_path / "research.md"
 
@@ -115,6 +110,7 @@ async def test_ingestion_service_marks_failed_and_rolls_back_processing(
         content,
         encoding="utf-8",
     )
+
     class FailingEmbeddingProvider(
         DeterministicEmbeddingProvider,
     ):
@@ -143,9 +139,7 @@ async def test_ingestion_service_marks_failed_and_rolls_back_processing(
 
         content_hash = calculate_content_hash(content)
 
-        document = await service.repository.get_by_content_hash(
-            content_hash
-        )
+        document = await service.repository.get_by_content_hash(content_hash)
 
         assert document is not None
         assert document.status == DocumentStatus.FAILED
@@ -156,9 +150,7 @@ async def test_ingestion_service_marks_failed_and_rolls_back_processing(
         assert document.last_error == "embedding failure"
 
         page_result = await session.execute(
-            select(DocumentPage).where(
-                DocumentPage.document_id == document.id
-            )
+            select(DocumentPage).where(DocumentPage.document_id == document.id)
         )
 
         assert page_result.scalars().all() == []
