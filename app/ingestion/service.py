@@ -1,9 +1,10 @@
+import hashlib
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import Document, DocumentPage
+from app.core.models import Document, DocumentPage, StoredFile
 from app.core.repositories.document import DocumentRepository
 from app.core.services.document import DocumentService
 from app.embeddings.provider import EmbeddingProvider
@@ -15,6 +16,8 @@ from app.ingestion.section_service import SectionService
 from app.ingestion.semantic_shredder import shred_semantically
 from app.ingestion.size_guard import apply_size_guard
 from app.ingestion.structure_extractor import StructureExtractor
+from app.storage.interface import FileStorage
+from app.storage.keys import build_storage_key
 
 
 class IngestionService:
@@ -24,8 +27,10 @@ class IngestionService:
         self,
         session: AsyncSession,
         embedding_provider: EmbeddingProvider,
+        file_storage: FileStorage,
     ) -> None:
         self.session = session
+        self.file_storage = file_storage
         self.repository = DocumentRepository(session)
         self.document_service = DocumentService(session)
         self.structure_extractor = StructureExtractor()
@@ -46,6 +51,7 @@ class IngestionService:
         logical_document_id: UUID | None = None,
         source: str | None = None,
     ) -> Document:
+        file_bytes = path.read_bytes()
         pages = loader.load(path)
 
         combined_content = "\n\n".join(page.content for page in pages)
@@ -59,10 +65,32 @@ class IngestionService:
             ),
             logical_document_id=logical_document_id,
         )
-
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
         if not created:
             return document
         document_id = document.id
+        file_id = uuid4()
+        storage_key = build_storage_key(
+            logical_document_id=document.logical_document_id,
+            document_version_id=document.id,
+            file_id=file_id,
+        )
+
+        await self.file_storage.store(
+            content=file_bytes,
+            storage_key=storage_key,
+        )
+
+        stored_file = StoredFile(
+            id=file_id,
+            document_id=document.id,
+            original_filename=path.name,
+            content_hash=file_hash,
+            size_bytes=len(file_bytes),
+            storage_key=storage_key,
+        )
+
+        await self.repository.create_stored_file(stored_file)
 
         await self.session.commit()
 

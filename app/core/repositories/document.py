@@ -10,6 +10,7 @@ from app.core.models import (
     DocumentPage,
     DocumentSection,
     DocumentStatus,
+    StoredFile,
 )
 from app.retrieval.models import RetrievedChunk
 
@@ -37,6 +38,13 @@ class DocumentRepository:
         await self.session.flush()
 
         return document
+
+    async def create_stored_file(self, stored_file: StoredFile) -> StoredFile:
+        """Persist the original file metadata."""
+        self.session.add(stored_file)
+        await self.session.flush()
+
+        return stored_file
 
     async def create_page(self, page: DocumentPage) -> DocumentPage:
         """Persist an extracted document page."""

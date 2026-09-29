@@ -10,10 +10,12 @@ from app.core.models import (
     DocumentChunk,
     DocumentPage,
     DocumentSection,
+    StoredFile,
 )
 from app.embeddings.testing import DeterministicEmbeddingProvider
 from app.ingestion.loaders.markdown import MarkdownLoader
 from app.ingestion.service import IngestionService
+from app.storage.local import LocalFileStorage
 
 
 @pytest.mark.asyncio
@@ -37,6 +39,7 @@ The results are useful for future research.
 """,
         encoding="utf-8",
     )
+    file_storage = LocalFileStorage(tmp_path / "storage")
 
     async with async_session_factory() as session:
         service = IngestionService(
@@ -44,6 +47,7 @@ The results are useful for future research.
             embedding_provider=DeterministicEmbeddingProvider(
                 dimensions=384,
             ),
+            file_storage=file_storage,
         )
         logical_document_id = uuid4()
         first_document = await service.ingest_file(
@@ -139,5 +143,17 @@ The results are useful for future research.
         assert chunk_count_after.scalar_one() == chunk_count
         assert mapping_count_after.scalar_one() == mapping_count
 
+        result = await session.execute(
+            select(StoredFile).where(
+                StoredFile.document_id == first_document.id,
+            )
+        )
+        stored_files = result.scalars().all()
+
+        assert len(stored_files) == 1
+
+        stored_file = stored_files[0]
+
+        await session.delete(stored_file)
         await session.delete(first_document)
         await session.commit()
