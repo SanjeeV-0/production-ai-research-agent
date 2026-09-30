@@ -162,3 +162,56 @@ def test_table_is_atomic_boundary() -> None:
     assert result[0].units[0].unit_type == UnitType.PARAGRAPH
     assert result[1].units[0].unit_type == UnitType.TABLE
     assert result[2].units[0].unit_type == UnitType.PARAGRAPH
+
+
+def test_similar_paragraphs_across_pages_are_grouped_and_preserve_pages() -> None:
+    units = [
+        StructuralUnit(
+            unit_type=UnitType.PARAGRAPH,
+            content="Retrieval systems improve recall.",
+            page_numbers=[1],
+            section_path="",
+            section_level=0,
+            section_index=0,
+        ),
+        StructuralUnit(
+            unit_type=UnitType.PARAGRAPH,
+            content="Semantic retrieval improves relevant results.",
+            page_numbers=[2],
+            section_path="",
+            section_level=0,
+            section_index=1,
+        ),
+        StructuralUnit(
+            unit_type=UnitType.PARAGRAPH,
+            content="The weather was sunny.",
+            page_numbers=[3],
+            section_path="",
+            section_level=0,
+            section_index=2,
+        ),
+    ]
+
+    provider = FakeEmbeddingProvider(
+        [
+            [1.0, 0.0],  # Page 1
+            [1.0, 0.0],  # Page 2 -> similarity 1.0
+            [0.0, 1.0],  # Page 3 -> similarity 0.0
+        ]
+    )
+
+    result = shred_semantically(
+        units,
+        embedding_provider=provider,
+        threshold=0.7,
+    )
+
+    assert len(result) == 2
+
+    assert len(result[0].units) == 2
+    assert result[0].section_path is None
+    assert result[0].page_numbers == [1, 2]
+
+    assert len(result[1].units) == 1
+    assert result[1].section_path is None
+    assert result[1].page_numbers == [3]

@@ -23,9 +23,10 @@ class SemanticUnit:
         return sorted({page for unit in self.units for page in unit.page_numbers})
 
     @property
-    def section_path(self) -> str:
-        """Return the owning section path."""
-        return self.units[0].section_path
+    def section_path(self) -> str | None:
+        """Return the owning section path, if one exists."""
+        section_path = self.units[0].section_path
+        return section_path or None
 
     @property
     def section_level(self) -> int:

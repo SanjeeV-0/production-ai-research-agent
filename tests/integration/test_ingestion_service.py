@@ -1,11 +1,19 @@
+import hashlib
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
-import hashlib
+
 from app.core.database import async_session_factory
-from app.core.models import DocumentPage, DocumentStatus, StoredFile,Document
+from app.core.models import (
+    ChunkPageMap,
+    DocumentChunk,
+    DocumentPage,
+    DocumentSection,
+    DocumentStatus,
+    StoredFile,
+)
 from app.embeddings.testing import DeterministicEmbeddingProvider
 from app.ingestion.loaders.markdown import MarkdownLoader
 from app.ingestion.normalizer import calculate_content_hash
@@ -279,15 +287,15 @@ async def test_ingestion_persists_correct_stored_file_metadata(
         )
 
         assert stored_file.original_filename == "example.txt"
-        assert stored_file.content_hash == hashlib.sha256(
-            original_bytes,
-        ).hexdigest()
+        assert (
+            stored_file.content_hash
+            == hashlib.sha256(
+                original_bytes,
+            ).hexdigest()
+        )
         assert stored_file.size_bytes == len(original_bytes)
         assert stored_file.storage_key == (
-            f"documents/"
-            f"{document.logical_document_id}/"
-            f"{document.id}/"
-            f"{stored_file.id}"
+            f"documents/{document.logical_document_id}/{document.id}/{stored_file.id}"
         )
 
         await session.delete(stored_file)
@@ -356,6 +364,95 @@ async def test_failed_ingestion_retains_original_file(
         )
 
         assert retrieved_bytes == original_bytes
+
+        await session.delete(stored_file)
+        await session.delete(document)
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_headingless_document_ingests_with_page_provenance(
+    tmp_path: Path,
+) -> None:
+    document_path = tmp_path / "headingless.md"
+
+    document_path.write_text(
+        """Retrieval systems improve document search by finding relevant passages.
+
+Semantic retrieval can improve recall by representing related passages in vector space.
+
+Evaluation compares retrieval quality across different search strategies.
+""",
+        encoding="utf-8",
+    )
+
+    file_storage = LocalFileStorage(tmp_path / "storage")
+
+    async with async_session_factory() as session:
+        service = IngestionService(
+            session,
+            embedding_provider=DeterministicEmbeddingProvider(
+                dimensions=384,
+            ),
+            file_storage=file_storage,
+        )
+
+        document = await service.ingest_file(
+            path=document_path,
+            loader=MarkdownLoader(),
+            title="Headingless Document",
+            document_type="research_paper",
+            source="integration-test",
+        )
+
+        assert document.status == DocumentStatus.READY
+
+        section_result = await session.execute(
+            select(DocumentSection).where(
+                DocumentSection.document_id == document.id,
+            )
+        )
+        sections = section_result.scalars().all()
+
+        assert sections == []
+
+        chunk_result = await session.execute(
+            select(DocumentChunk)
+            .where(DocumentChunk.document_id == document.id)
+            .order_by(DocumentChunk.chunk_index)
+        )
+        chunks = chunk_result.scalars().all()
+
+        assert chunks
+        assert all(chunk.section_id is None for chunk in chunks)
+
+        page_mapping_result = await session.execute(
+            select(ChunkPageMap)
+            .join(
+                DocumentChunk,
+                DocumentChunk.id == ChunkPageMap.chunk_id,
+            )
+            .where(DocumentChunk.document_id == document.id)
+        )
+        mappings = page_mapping_result.scalars().all()
+
+        assert mappings
+
+        page_result = await session.execute(
+            select(DocumentPage).where(
+                DocumentPage.document_id == document.id,
+            )
+        )
+        pages = page_result.scalars().all()
+
+        page_ids = {page.id for page in pages}
+
+        assert all(mapping.document_page_id in page_ids for mapping in mappings)
+
+        stored_file = await get_stored_file(
+            session,
+            document.id,
+        )
 
         await session.delete(stored_file)
         await session.delete(document)

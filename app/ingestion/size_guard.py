@@ -14,8 +14,8 @@ class ChildChunk:
     index: int
     content: str
     page_numbers: list[int]
-    section_id: UUID
-    section_path: str
+    section_id: UUID | None
+    section_path: str | None
     section_level: int
     source_units: tuple[StructuralUnit, ...]
 
@@ -189,7 +189,11 @@ def apply_size_guard(
 
         if not content:
             continue
-        section_id = section_map.get(semantic_unit.section_path)
+        section_id = (
+            section_map.get(semantic_unit.section_path)
+            if semantic_unit.section_path is not None
+            else None
+        )
 
         if estimate_tokens(content) <= max_tokens:
             children.append(

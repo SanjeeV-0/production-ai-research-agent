@@ -338,7 +338,7 @@ class DocumentChunk(Base):
     section_id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("document_sections.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     section: Mapped["DocumentSection"] = relationship(
