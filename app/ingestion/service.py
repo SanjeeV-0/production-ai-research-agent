@@ -76,21 +76,32 @@ class IngestionService:
             file_id=file_id,
         )
 
-        await self.file_storage.store(
-            content=file_bytes,
-            storage_key=storage_key,
-        )
+        await self.file_storage.store(file_bytes, storage_key)
 
-        stored_file = StoredFile(
-            id=file_id,
-            document_id=document.id,
-            original_filename=path.name,
-            content_hash=file_hash,
-            size_bytes=len(file_bytes),
-            storage_key=storage_key,
-        )
+        try:
+            stored_file = StoredFile(
+                id=file_id,
+                document_id=document.id,
+                original_filename=path.name,
+                content_hash=file_hash,
+                size_bytes=len(file_bytes),
+                storage_key=storage_key,
+            )
+            self.session.add(stored_file)
 
-        await self.repository.create_stored_file(stored_file)
+            await self.session.commit()
+
+        except Exception:
+            await self.session.rollback()
+
+            try:
+                await self.file_storage.delete(storage_key)
+            except Exception:
+                # Preserve the original DB/application failure.
+                pass
+
+            raise
+            await self.session.commit()
 
         await self.session.commit()
 

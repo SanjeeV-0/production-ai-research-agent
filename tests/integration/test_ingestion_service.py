@@ -21,6 +21,27 @@ from app.ingestion.service import IngestionService
 from app.storage.local import LocalFileStorage
 
 
+class RecordingFileStorage(LocalFileStorage):
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.stored_keys: list[str] = []
+        self.deleted_keys: list[str] = []
+
+    async def store(self, content: bytes, storage_key: str) -> None:
+        await super().store(content, storage_key)
+        self.stored_keys.append(storage_key)
+
+    async def delete(self, storage_key: str) -> None:
+        self.deleted_keys.append(storage_key)
+        await super().delete(storage_key)
+
+
+class FailingDeleteStorage(RecordingFileStorage):
+    async def delete(self, storage_key: str) -> None:
+        self.deleted_keys.append(storage_key)
+        raise RuntimeError("cleanup failure")
+
+
 async def get_stored_file(
     session,
     document_id,
