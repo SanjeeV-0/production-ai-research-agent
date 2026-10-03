@@ -1,11 +1,13 @@
 import hashlib
+import tempfile
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import Document, DocumentPage, StoredFile
+from app.core.models import Document, DocumentPage, DocumentStatus, StoredFile
 from app.core.repositories.document import DocumentRepository
+from app.core.repositories.stored_file import StoredFileRepository
 from app.core.services.document import DocumentService
 from app.embeddings.provider import EmbeddingProvider
 from app.ingestion.chunk_service import ChunkService
@@ -32,6 +34,7 @@ class IngestionService:
         self.session = session
         self.file_storage = file_storage
         self.repository = DocumentRepository(session)
+        self.stored_file_repository = StoredFileRepository(session)
         self.document_service = DocumentService(session)
         self.structure_extractor = StructureExtractor()
         self.section_builder = SectionBuilder()
@@ -65,18 +68,24 @@ class IngestionService:
             ),
             logical_document_id=logical_document_id,
         )
+
         file_hash = hashlib.sha256(file_bytes).hexdigest()
+
         if not created:
             return document
-        document_id = document.id
+
         file_id = uuid4()
+
         storage_key = build_storage_key(
             logical_document_id=document.logical_document_id,
             document_version_id=document.id,
             file_id=file_id,
         )
 
-        await self.file_storage.store(file_bytes, storage_key)
+        await self.file_storage.store(
+            file_bytes,
+            storage_key,
+        )
 
         try:
             stored_file = StoredFile(
@@ -87,6 +96,7 @@ class IngestionService:
                 size_bytes=len(file_bytes),
                 storage_key=storage_key,
             )
+
             self.session.add(stored_file)
 
             await self.session.commit()
@@ -101,13 +111,67 @@ class IngestionService:
                 pass
 
             raise
-            await self.session.commit()
-
-        #await self.session.commit()
 
         document = await self.document_service.mark_processing(document)
 
         await self.session.commit()
+
+        return await self._process_document(
+            document=document,
+            pages=pages,
+        )
+
+    async def retry_document(
+        self,
+        document_id: UUID,
+        loader: DocumentLoader,
+    ) -> Document:
+        document = await self.repository.get_by_id(document_id)
+
+        if document is None:
+            raise ValueError(f"Document {document_id} not found.")
+
+        if document.status != DocumentStatus.FAILED:
+            raise ValueError("Only FAILED documents can be retried.")
+
+        stored_file = await self.stored_file_repository.get_by_document_id(document.id)
+
+        if stored_file is None:
+            raise ValueError(f"No stored file found for document {document.id}.")
+
+        file_bytes = await self.file_storage.retrieve(stored_file.storage_key)
+
+        temporary_path: Path | None = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                suffix=Path(stored_file.original_filename).suffix,
+                delete=False,
+            ) as temporary_file:
+                temporary_file.write(file_bytes)
+                temporary_path = Path(temporary_file.name)
+
+            pages = loader.load(temporary_path)
+
+            document = await self.document_service.mark_processing(document)
+
+            await self.session.commit()
+
+            return await self._process_document(
+                document=document,
+                pages=pages,
+            )
+
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+    async def _process_document(
+        self,
+        document: Document,
+        pages: list,
+    ) -> Document:
+        document_id = document.id
 
         try:
             page_ids: dict[int, UUID] = {}
@@ -159,7 +223,7 @@ class IngestionService:
         except Exception as exc:
             await self.session.rollback()
 
-            document = await self.document_service.repository.get_by_id(document_id)
+            document = await self.repository.get_by_id(document_id)
 
             if document is None:
                 raise RuntimeError("Document disappeared after ingestion failure.") from exc
