@@ -23,3 +23,18 @@ class StoredFileRepository:
 
     async def delete(self, stored_file: StoredFile) -> None:
         await self.session.delete(stored_file)
+
+    async def get_by_document_ids(
+        self,
+        document_ids: list[UUID],
+    ) -> list[StoredFile]:
+        if not document_ids:
+            return []
+
+        result = await self.session.execute(
+            select(StoredFile).where(
+                StoredFile.document_id.in_(document_ids),
+            )
+        )
+
+        return list(result.scalars().all())

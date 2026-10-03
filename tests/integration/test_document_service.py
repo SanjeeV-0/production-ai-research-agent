@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 
 from app.core.database import async_session_factory
-from app.core.models import DocumentStatus
+from app.core.models import Document, DocumentStatus
 from app.core.services.document import DocumentService
 from app.ingestion.schemas import DocumentInput
 
@@ -356,3 +356,180 @@ async def test_processing_version_is_reused_without_creating_new_version() -> No
         await session.delete(second_document)
         await session.delete(first_document)
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_delete_non_current_version_leaves_current_unchanged() -> None:
+    logical_document_id = uuid4()
+
+    async with async_session_factory() as session:
+        current_document = Document(
+            title="Current",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"current-{uuid4()}",
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+
+        historical_document = Document(
+            title="Historical",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"historical-{uuid4()}",
+            version_number=2,
+            is_current=False,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+
+        session.add_all(
+            [
+                current_document,
+                historical_document,
+            ]
+        )
+        await session.commit()
+
+        service = DocumentService(session)
+
+        await service.delete_version(historical_document)
+        await session.commit()
+
+        current = await service.repository.get_by_id(current_document.id)
+        deleted = await service.repository.get_by_id(historical_document.id)
+
+        assert current is not None
+        assert current.is_current is True
+        assert current.status == DocumentStatus.READY
+        assert deleted is None
+
+
+@pytest.mark.asyncio
+async def test_delete_current_version_promotes_newest_ready() -> None:
+    logical_document_id = uuid4()
+
+    async with async_session_factory() as session:
+        version_one = Document(
+            title="Version One",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"one-{uuid4()}",
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+
+        version_two = Document(
+            title="Version Two",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"two-{uuid4()}",
+            version_number=2,
+            is_current=False,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+
+        session.add_all([version_one, version_two])
+        await session.commit()
+
+        service = DocumentService(session)
+
+        replacement = await service.delete_version(version_one)
+        await session.commit()
+
+        assert replacement is not None
+        assert replacement.id == version_two.id
+        assert replacement.is_current is True
+
+        deleted = await service.repository.get_by_id(version_one.id)
+        current = await service.repository.get_by_id(version_two.id)
+
+        assert deleted is None
+        assert current is not None
+        assert current.is_current is True
+
+
+@pytest.mark.asyncio
+async def test_delete_current_version_does_not_promote_failed_version() -> None:
+    logical_document_id = uuid4()
+
+    async with async_session_factory() as session:
+        current_document = Document(
+            title="Current",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"current-{uuid4()}",
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+
+        failed_document = Document(
+            title="Failed",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"failed-{uuid4()}",
+            version_number=2,
+            is_current=False,
+            status=DocumentStatus.FAILED,
+            document_metadata={},
+        )
+
+        session.add_all(
+            [
+                current_document,
+                failed_document,
+            ]
+        )
+        await session.commit()
+
+        service = DocumentService(session)
+
+        replacement = await service.delete_version(current_document)
+        await session.commit()
+
+        assert replacement is None
+
+        deleted = await service.repository.get_by_id(current_document.id)
+        failed = await service.repository.get_by_id(failed_document.id)
+
+        assert deleted is None
+        assert failed is not None
+        assert failed.is_current is False
+
+
+@pytest.mark.asyncio
+async def test_delete_current_version_can_leave_no_current_version() -> None:
+    logical_document_id = uuid4()
+
+    async with async_session_factory() as session:
+        document = Document(
+            title="Only Version",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"only-{uuid4()}",
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+
+        session.add(document)
+        await session.commit()
+
+        service = DocumentService(session)
+
+        replacement = await service.delete_version(document)
+        await session.commit()
+
+        assert replacement is None
+
+        current = await service.repository.get_current_version(logical_document_id)
+
+        assert current is None

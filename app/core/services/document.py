@@ -109,3 +109,31 @@ class DocumentService:
         document.last_error = error
 
         return await self.repository.update(document)
+
+    async def delete_version(
+        self,
+        document: Document,
+    ) -> Document | None:
+        """Delete a document version and promote the newest READY version."""
+
+        was_current = document.is_current
+        logical_document_id = document.logical_document_id
+        document_id = document.id
+
+        await self.repository.delete(document)
+
+        if not was_current:
+            return None
+
+        replacement = await self.repository.get_newest_ready_version(
+            logical_document_id=logical_document_id,
+            exclude_document_id=document_id,
+        )
+
+        if replacement is None:
+            return None
+
+        replacement.is_current = True
+        await self.repository.update(replacement)
+
+        return replacement

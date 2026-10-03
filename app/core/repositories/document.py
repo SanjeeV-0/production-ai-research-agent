@@ -217,11 +217,44 @@ class DocumentRepository:
 
         return result.scalar_one() or 0
 
+    async def delete(self, document: Document) -> None:
+        """Delete a document within the current database transaction."""
 
-async def get_by_id(self, document_id: UUID) -> Document | None:
-    result = await self.session.execute(select(Document).where(Document.id == document_id))
-    return result.scalar_one_or_none()
+        await self.session.delete(document)
+        await self.session.flush()
 
+    async def get_newest_ready_version(
+        self,
+        logical_document_id: UUID,
+        exclude_document_id: UUID | None = None,
+    ) -> Document | None:
+        """Return the newest READY version for a logical document."""
 
-async def delete(self, document: Document) -> None:
-    await self.session.delete(document)
+        query = (
+            select(Document)
+            .where(
+                Document.logical_document_id == logical_document_id,
+                Document.status == DocumentStatus.READY,
+            )
+            .order_by(Document.version_number.desc())
+            .limit(1)
+        )
+
+        if exclude_document_id is not None:
+            query = query.where(Document.id != exclude_document_id)
+
+        result = await self.session.execute(query)
+
+        return result.scalar_one_or_none()
+
+    async def get_by_logical_document_id(
+        self,
+        logical_document_id: UUID,
+    ) -> list[Document]:
+        result = await self.session.execute(
+            select(Document).where(
+                Document.logical_document_id == logical_document_id,
+            )
+        )
+
+        return list(result.scalars().all())
