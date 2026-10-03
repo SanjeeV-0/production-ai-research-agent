@@ -105,7 +105,7 @@ class DocumentRepository:
                 Document,
                 DocumentChunk.document_id == Document.id,
             )
-            .join(
+            .outerjoin(
                 DocumentSection,
                 DocumentChunk.section_id == DocumentSection.id,
             )
