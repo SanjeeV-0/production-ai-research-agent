@@ -103,7 +103,7 @@ class IngestionService:
             raise
             await self.session.commit()
 
-        await self.session.commit()
+        #await self.session.commit()
 
         document = await self.document_service.mark_processing(document)
 
