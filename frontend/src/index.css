@@ -1082,6 +1082,32 @@ button {
 }
 
 /* ==========================================================================
+   WARNING / UNAVAILABLE BANNER
+   ========================================================================== */
+.warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  color: #fde68a;
+}
+
+.warning-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+  color: #fef3c7;
+}
+
+.warning-desc {
+  font-size: 0.85rem;
+  color: #fcd34d;
+}
+
+/* ==========================================================================
    SUCCESS BANNER
    ========================================================================== */
 .success-banner {

@@ -5,7 +5,6 @@ import {
   RetrievedChunkResponse,
 } from '../types/research';
 import { searchRetrievedChunks } from '../api/research';
-import { registerDiscoveredDocument } from '../api/documents';
 import {
   Search,
   Layers,
@@ -65,11 +64,6 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
     try {
       const data = await searchRetrievedChunks(payload);
       setResponse(data);
-
-      // Auto-register any discovered documents in local library
-      data.results.forEach((chunk) => {
-        registerDiscoveredDocument(chunk.document_id, chunk.section_path);
-      });
 
       if (data.trace && onViewTrace) {
         onViewTrace(data.trace);

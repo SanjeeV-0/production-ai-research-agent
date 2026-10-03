@@ -51,3 +51,9 @@ export interface LogicalDocumentSummary {
   file_size_bytes?: number;
   versions: DocumentVersion[];
 }
+
+export interface UploadDocumentMetadata {
+  title?: string;
+  document_type?: string;
+  source?: string;
+}

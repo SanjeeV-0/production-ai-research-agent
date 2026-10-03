@@ -4,13 +4,15 @@ import {
   LogicalDocumentSummary,
 } from '../types/document';
 import {
-  getLogicalDocuments,
-  retryFailedVersion,
+  listDocuments,
+  retryDocumentVersion,
   deleteDocumentVersion,
   deleteLogicalDocument,
+  DocumentApiUnavailableError,
 } from '../api/documents';
 import { StatusBadge } from './StatusBadge';
 import { ConfirmModal } from './ConfirmModal';
+import { UploadDocumentModal } from './UploadDocumentModal';
 import {
   FileText,
   Search,
@@ -21,6 +23,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Info,
+  UploadCloud,
 } from 'lucide-react';
 
 interface DocumentWorkspaceProps {
@@ -39,6 +42,10 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [isApiUnavailable, setIsApiUnavailable] = useState(false);
+
+  // Upload modal
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   // Retry state
   const [retryingVersionId, setRetryingVersionId] = useState<string | null>(null);
@@ -55,10 +62,16 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     setIsLoading(true);
     setActionError(null);
     try {
-      const docs = await getLogicalDocuments();
+      const docs = await listDocuments();
       setDocuments(docs);
+      setIsApiUnavailable(false);
     } catch (err: any) {
-      setActionError(err?.message || 'Failed to load document library.');
+      if (err instanceof DocumentApiUnavailableError) {
+        setIsApiUnavailable(true);
+        setDocuments([]);
+      } else {
+        setActionError(err?.message || 'Failed to load document library.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -92,6 +105,13 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     return matchesSearch && matchesStatus;
   });
 
+  const describeError = (err: unknown, fallback: string): string => {
+    if (err instanceof DocumentApiUnavailableError) {
+      return `${err.message} This action could not be performed.`;
+    }
+    return (err as any)?.message || fallback;
+  };
+
   // Handle Retry
   const handleRetry = async (versionId: string) => {
     setRetryingVersionId(versionId);
@@ -99,13 +119,14 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     setActionSuccess(null);
 
     try {
-      const res = await retryFailedVersion(versionId);
-      if (res.success) {
-        setActionSuccess(`Version ${res.version.version_number} successfully reprocessed and is now READY (Current).`);
-        await loadDocuments();
+      const version = await retryDocumentVersion(versionId);
+      setActionSuccess(`Version ${version.version_number} successfully reprocessed and is now READY (Current).`);
+      await loadDocuments();
+    } catch (err) {
+      if (err instanceof DocumentApiUnavailableError) {
+        setIsApiUnavailable(true);
       }
-    } catch (err: any) {
-      setActionError(err?.message || 'Retry failed.');
+      setActionError(describeError(err, 'Retry failed.'));
     } finally {
       setRetryingVersionId(null);
     }
@@ -118,17 +139,15 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     setActionError(null);
 
     try {
-      const res = await deleteDocumentVersion(versionToDelete.version.id);
-      if (res.success) {
-        setActionSuccess(
-          `Version ${versionToDelete.version.version_number} deleted.` +
-            (res.promotedVersionId ? ' The newest READY version was promoted to current.' : '')
-        );
-        setVersionToDelete(null);
-        await loadDocuments();
+      await deleteDocumentVersion(versionToDelete.version.id);
+      setActionSuccess(`Version ${versionToDelete.version.version_number} deleted.`);
+      setVersionToDelete(null);
+      await loadDocuments();
+    } catch (err) {
+      if (err instanceof DocumentApiUnavailableError) {
+        setIsApiUnavailable(true);
       }
-    } catch (err: any) {
-      setActionError(err?.message || 'Failed to delete version.');
+      setActionError(describeError(err, 'Failed to delete version.'));
     } finally {
       setIsDeleting(false);
     }
@@ -141,23 +160,31 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     setActionError(null);
 
     try {
-      const res = await deleteLogicalDocument(logicalDocToDelete.logical_document_id);
-      if (res.success) {
-        setActionSuccess(`Logical document "${logicalDocToDelete.title}" and all its versions were removed.`);
-        setLogicalDocToDelete(null);
-        setSelectedDocId(null);
-        await loadDocuments();
+      await deleteLogicalDocument(logicalDocToDelete.logical_document_id);
+      setActionSuccess(`Logical document "${logicalDocToDelete.title}" and all its versions were removed.`);
+      setLogicalDocToDelete(null);
+      setSelectedDocId(null);
+      await loadDocuments();
+    } catch (err) {
+      if (err instanceof DocumentApiUnavailableError) {
+        setIsApiUnavailable(true);
       }
-    } catch (err: any) {
-      setActionError(err?.message || 'Failed to delete document.');
+      setActionError(describeError(err, 'Failed to delete document.'));
     } finally {
       setIsDeleting(false);
     }
   };
 
+  // Handle successful upload
+  const handleUploaded = async (version: DocumentVersion) => {
+    setActionError(null);
+    setActionSuccess(`"${version.title}" uploaded and submitted for ingestion (version ${version.version_number}).`);
+    await loadDocuments();
+  };
+
   return (
     <div className="document-workspace">
-      {/* Backend API Notice Banner */}
+      {/* Purpose banner */}
       <div
         className="glass-card"
         style={{
@@ -172,11 +199,26 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
       >
         <Info size={18} color="#06b6d4" style={{ flexShrink: 0 }} />
         <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
-          <strong>Document Lifecycle & Ingestion Architecture:</strong> All lifecycle operations
-          faithfully reflect backend semantics (Content-hash idempotency, versioning, promotion of newest
-          READY version upon current-version deletion, and pgvector READY-only retrieval filtering).
+          <strong>Manage the knowledge corpus:</strong> upload and ingest documents, track
+          UPLOADED / PROCESSING / READY / FAILED lifecycle status, manage versions, retry failed
+          ingestions, and delete versions or entire documents.
         </div>
       </div>
+
+      {isApiUnavailable && (
+        <div className="warning-banner" style={{ marginBottom: '1.25rem' }}>
+          <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <div className="warning-title">Document Management API Not Exposed</div>
+            <div className="warning-desc">
+              The backend does not currently expose HTTP routes for document management
+              (e.g. GET/POST/DELETE <code>/documents</code>). This page reflects the intended
+              UI for that workflow, but no real documents can be listed, uploaded, retried, or
+              deleted until those routes are added to the backend.
+            </div>
+          </div>
+        </div>
+      )}
 
       {actionSuccess && (
         <div className="success-banner" style={{ marginBottom: '1.25rem' }}>
@@ -393,6 +435,35 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
       ) : (
         /* ================= DOCUMENT LIBRARY LIST VIEW ================= */
         <div>
+          {/* Page heading + primary upload action */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              flexWrap: 'wrap',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f8fafc' }}>
+                Document Library
+              </h2>
+              <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                Manage the knowledge corpus ingested into the research agent.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setIsUploadOpen(true)}
+            >
+              <UploadCloud size={16} />
+              Upload / Ingest Document
+            </button>
+          </div>
+
           {/* Controls Bar */}
           <div
             className="glass-card"
@@ -507,11 +578,15 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
           {filteredDocuments.length === 0 && !isLoading && (
             <div className="glass-card empty-state" style={{ padding: '3rem' }}>
               <FileText className="empty-icon" />
-              <p className="empty-title">No Documents Found</p>
+              <p className="empty-title">
+                {isApiUnavailable ? 'Document Library Unavailable' : 'No Documents Found'}
+              </p>
               <p className="empty-desc">
-                {searchQuery || statusFilter !== 'ALL'
+                {isApiUnavailable
+                  ? 'The backend does not currently expose a document listing endpoint, so no documents can be shown.'
+                  : searchQuery || statusFilter !== 'ALL'
                   ? 'No documents match the active filter criteria.'
-                  : 'No ingested documents currently in the library.'}
+                  : 'No ingested documents currently in the library. Use "Upload / Ingest Document" to add one.'}
               </p>
             </div>
           )}
@@ -563,6 +638,13 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
         isLoading={isDeleting}
         onConfirm={handleConfirmDeleteLogical}
         onCancel={() => setLogicalDocToDelete(null)}
+      />
+
+      {/* Upload / Ingest Modal */}
+      <UploadDocumentModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onUploaded={handleUploaded}
       />
     </div>
   );

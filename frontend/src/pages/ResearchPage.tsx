@@ -13,7 +13,6 @@ import {
   checkBackendHealth,
   checkBackendReadiness,
 } from '../api/research';
-import { registerDiscoveredDocument } from '../api/documents';
 import {
   ResearchResponse,
   BackendReadinessResponse,
@@ -62,11 +61,6 @@ export const ResearchPage: React.FC = () => {
       if (data.trace) {
         setActiveTraceData(data.trace);
       }
-
-      // Auto-register discovered document IDs in the library
-      data.sources.forEach((src) => {
-        registerDiscoveredDocument(src.document_id, src.section_path);
-      });
     } catch (err: any) {
       console.error('Research request failed:', err);
       setError(
