@@ -207,6 +207,27 @@ export const TracePanel: React.FC<TracePanelProps> = ({ trace }) => {
           )}
         </div>
       )}
+
+      {/* Observability & Langfuse note */}
+      <div
+        style={{
+          marginTop: '1.5rem',
+          padding: '0.85rem 1.25rem',
+          background: 'rgba(15, 23, 42, 0.5)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 8,
+          fontSize: '0.75rem',
+          color: '#94a3b8',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <span>
+          <strong>Observability Integration:</strong> Backend traces each retrieval step (`retriever` span) and generation request to Langfuse when `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY` are configured.
+        </span>
+        <span style={{ color: '#818cf8', fontWeight: 600 }}>External Langfuse Dashboard</span>
+      </div>
     </div>
   );
 };

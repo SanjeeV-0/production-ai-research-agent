@@ -11,7 +11,15 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/retrieval': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/health': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/documents': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },

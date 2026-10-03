@@ -7,12 +7,14 @@ interface SourcesPanelProps {
   sources: Source[];
   isLoading: boolean;
   finalResults?: CandidateResult[];
+  onInspectDocument?: (docId: string) => void;
 }
 
 export const SourcesPanel: React.FC<SourcesPanelProps> = ({
   sources,
   isLoading,
   finalResults,
+  onInspectDocument,
 }) => {
   // Map final result details if trace is available
   const getTraceInfo = (chunkId: string) => {
@@ -55,6 +57,7 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
                   additionalContent={traceInfo?.content}
                   distance={traceInfo?.distance}
                   rerankScore={traceInfo?.rerank_score}
+                  onInspectDocument={onInspectDocument}
                 />
               );
             })}

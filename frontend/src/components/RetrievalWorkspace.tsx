@@ -1,0 +1,439 @@
+import React, { useState } from 'react';
+import {
+  RetrievalSearchRequest,
+  RetrievalSearchResponse,
+  RetrievedChunkResponse,
+} from '../types/research';
+import { searchRetrievedChunks } from '../api/research';
+import { registerDiscoveredDocument } from '../api/documents';
+import {
+  Search,
+  Layers,
+  BookOpen,
+  Hash,
+  FileText,
+  Sliders,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  Copy,
+  Check,
+  Cpu,
+} from 'lucide-react';
+
+interface RetrievalWorkspaceProps {
+  initialDocumentId?: string | null;
+  onSelectDocument?: (documentId: string) => void;
+  onViewTrace?: (trace: any) => void;
+}
+
+export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
+  initialDocumentId,
+  onSelectDocument,
+  onViewTrace,
+}) => {
+  const [query, setQuery] = useState('retrieval augmented generation vectors');
+  const [limit, setLimit] = useState(10);
+  const [documentIdFilter, setDocumentIdFilter] = useState(initialDocumentId || '');
+  const [sectionIdFilter, setSectionIdFilter] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(!!initialDocumentId);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [response, setResponse] = useState<RetrievalSearchResponse | null>(null);
+  const [expandedChunkId, setExpandedChunkId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!query.trim() || isLoading) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    const payload: RetrievalSearchRequest = {
+      query: query.trim(),
+      limit,
+    };
+    if (documentIdFilter.trim()) {
+      payload.document_id = documentIdFilter.trim();
+    }
+    if (sectionIdFilter.trim()) {
+      payload.section_id = sectionIdFilter.trim();
+    }
+
+    try {
+      const data = await searchRetrievedChunks(payload);
+      setResponse(data);
+
+      // Auto-register any discovered documents in local library
+      data.results.forEach((chunk) => {
+        registerDiscoveredDocument(chunk.document_id, chunk.section_path);
+      });
+
+      if (data.trace && onViewTrace) {
+        onViewTrace(data.trace);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to execute vector retrieval search.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  return (
+    <div className="retrieval-workspace">
+      {/* Parameter Controls Panel */}
+      <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+        <form onSubmit={handleSearch}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Search size={18} color="#06b6d4" />
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
+                Vector Retrieval Explorer
+              </h2>
+            </div>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              style={{ fontSize: '0.78rem' }}
+            >
+              <Sliders size={14} />
+              {showAdvanced ? 'Hide Retrieval Filters' : 'Retrieval Filters'}
+            </button>
+          </div>
+
+          <div className="input-wrapper" style={{ marginBottom: '1rem' }}>
+            <textarea
+              className="research-textarea"
+              rows={2}
+              placeholder="Enter search query or concept to embed with SentenceTransformer and rank via pgvector..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+
+          {showAdvanced && (
+            <div className="advanced-filters-grid" style={{ marginBottom: '1.25rem' }}>
+              <div>
+                <label className="input-label" style={{ fontSize: '0.75rem', marginBottom: '0.35rem' }}>
+                  Candidate Limit (K chunks: {limit})
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <input
+                    type="range"
+                    min={1}
+                    max={50}
+                    value={limit}
+                    onChange={(e) => setLimit(Number(e.target.value))}
+                    style={{ flex: 1, accentColor: '#06b6d4' }}
+                    disabled={isLoading}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={limit}
+                    onChange={(e) => setLimit(Math.max(1, Math.min(50, Number(e.target.value))))}
+                    style={{
+                      width: 60,
+                      background: 'rgba(15,23,42,0.8)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 6,
+                      color: '#f8fafc',
+                      padding: '0.2rem 0.5rem',
+                      fontSize: '0.8rem',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="input-label" style={{ fontSize: '0.75rem', marginBottom: '0.35rem' }}>
+                  Document Filter (UUID)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Filter to specific document UUID (optional)"
+                  value={documentIdFilter}
+                  onChange={(e) => setDocumentIdFilter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(15,23,42,0.8)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 6,
+                    color: '#f8fafc',
+                    padding: '0.45rem 0.75rem',
+                    fontSize: '0.8rem',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div>
+                <label className="input-label" style={{ fontSize: '0.75rem', marginBottom: '0.35rem' }}>
+                  Section Filter (UUID)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Filter to specific section UUID (optional)"
+                  value={sectionIdFilter}
+                  onChange={(e) => setSectionIdFilter(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(15,23,42,0.8)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 6,
+                    color: '#f8fafc',
+                    padding: '0.45rem 0.75rem',
+                    fontSize: '0.8rem',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={!query.trim() || isLoading}
+              style={{ background: 'linear-gradient(135deg, #06b6d4, #3b82f6)' }}
+            >
+              {isLoading ? (
+                <>
+                  <span className="spinner-ring" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                  Searching pgvector...
+                </>
+              ) : (
+                <>
+                  <Search size={16} />
+                  Execute Vector Retrieval
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Error state */}
+      {error && (
+        <div className="error-banner">
+          <AlertCircle size={22} style={{ flexShrink: 0, marginTop: 2, color: '#f43f5e' }} />
+          <div>
+            <h4 className="error-title">Retrieval API Error</h4>
+            <p className="error-desc">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Results Header / Stats */}
+      {response && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', padding: '0 0.5rem' }}>
+          <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+            Found <strong style={{ color: '#f8fafc' }}>{response.results.length}</strong> matching chunks
+            {response.trace && (
+              <span style={{ marginLeft: '0.75rem', color: '#06b6d4' }}>
+                (from {response.trace.candidate_limit} pgvector candidates)
+              </span>
+            )}
+          </div>
+          {response.trace && (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+              onClick={() => onViewTrace && onViewTrace(response.trace)}
+            >
+              <Cpu size={13} /> View Trace & Rerank Scores
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Results list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {isLoading ? (
+          <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
+            <div className="spinner-outer" style={{ width: 40, height: 40, margin: '0 auto 1rem auto' }}>
+              <div className="spinner-ring" style={{ borderTopColor: '#06b6d4' }} />
+            </div>
+            <p style={{ color: '#f8fafc', fontWeight: 600 }}>Querying pgvector vector store...</p>
+            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+              Filtering to current READY versions and applying cosine similarity.
+            </p>
+          </div>
+        ) : response && response.results.length > 0 ? (
+          response.results.map((chunk: RetrievedChunkResponse, idx: number) => {
+            const isExpanded = expandedChunkId === chunk.chunk_id;
+            const pagesText = chunk.page_numbers?.length ? chunk.page_numbers.join(', ') : 'N/A';
+            const similarityPercent = (chunk.similarity * 100).toFixed(1);
+
+            return (
+              <div key={chunk.chunk_id || idx} className="glass-card" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span className="source-badge-index" style={{ background: 'rgba(6, 182, 212, 0.2)', color: '#22d3ee' }}>
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.95rem' }}>
+                        {chunk.section_path || 'Document Content'}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }}>
+                        <span className="source-pages">
+                          <BookOpen size={11} /> Page {pagesText}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#06b6d4', fontFamily: 'var(--font-mono)' }}>
+                          Cosine Dist: {chunk.distance.toFixed(4)}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#10b981', fontFamily: 'var(--font-mono)' }}>
+                          Similarity: {similarityPercent}%
+                        </span>
+                        {chunk.rerank_score !== null && chunk.rerank_score !== undefined && (
+                          <span style={{ fontSize: '0.72rem', color: '#a855f7', fontFamily: 'var(--font-mono)' }}>
+                            Rerank: {chunk.rerank_score.toFixed(3)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {onSelectDocument && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
+                        onClick={() => onSelectDocument(chunk.document_id)}
+                        title="View document in Document Workspace"
+                      >
+                        <FileText size={12} /> Inspect Doc
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem' }}
+                      onClick={() => setExpandedChunkId(isExpanded ? null : chunk.chunk_id)}
+                    >
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      {isExpanded ? 'Collapse' : 'Details'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Chunk text content */}
+                <div
+                  style={{
+                    marginTop: '0.85rem',
+                    padding: '0.85rem 1rem',
+                    background: 'rgba(15, 23, 42, 0.75)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: 8,
+                    fontSize: '0.85rem',
+                    lineHeight: '1.6',
+                    color: '#e2e8f0',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  {chunk.content}
+                </div>
+
+                {/* Expandable Technical Details Drawer */}
+                {isExpanded && (
+                  <div className="source-details-drawer" style={{ marginTop: '0.85rem' }}>
+                    <div className="source-detail-item">
+                      <span className="source-detail-label">
+                        <FileText size={10} style={{ display: 'inline', marginRight: 2 }} /> Document ID
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <span className="source-detail-value" title={chunk.document_id}>
+                          {chunk.document_id}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          style={{ padding: '0.1rem 0.2rem' }}
+                          onClick={() => handleCopy(chunk.document_id, `doc-${chunk.chunk_id}`)}
+                        >
+                          {copiedId === `doc-${chunk.chunk_id}` ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="source-detail-item">
+                      <span className="source-detail-label">
+                        <Hash size={10} style={{ display: 'inline', marginRight: 2 }} /> Chunk ID
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <span className="source-detail-value" title={chunk.chunk_id}>
+                          {chunk.chunk_id}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          style={{ padding: '0.1rem 0.2rem' }}
+                          onClick={() => handleCopy(chunk.chunk_id, `chunk-${chunk.chunk_id}`)}
+                        >
+                          {copiedId === `chunk-${chunk.chunk_id}` ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="source-detail-item">
+                      <span className="source-detail-label">
+                        <Layers size={10} style={{ display: 'inline', marginRight: 2 }} /> Section ID
+                      </span>
+                      <span className="source-detail-value" title={chunk.section_id}>
+                        {chunk.section_id || 'N/A'}
+                      </span>
+                    </div>
+
+                    <div className="source-detail-item">
+                      <span className="source-detail-label">
+                        <BookOpen size={10} style={{ display: 'inline', marginRight: 2 }} /> Page Numbers
+                      </span>
+                      <span className="source-detail-value">
+                        {pagesText}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : response && response.results.length === 0 ? (
+          <div className="glass-card empty-state">
+            <AlertCircle className="empty-icon" />
+            <p className="empty-title">No Chunks Matched</p>
+            <p className="empty-desc">
+              No READY current document chunks were close enough in vector space. Try adjusting the query or relaxing filter criteria.
+            </p>
+          </div>
+        ) : (
+          <div className="glass-card empty-state">
+            <Search className="empty-icon" color="#06b6d4" />
+            <p className="empty-title">Vector Retrieval Ready</p>
+            <p className="empty-desc">
+              Enter a research concept or query above to run vector similarity retrieval directly against indexed chunks.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

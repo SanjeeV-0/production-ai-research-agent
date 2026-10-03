@@ -1,0 +1,569 @@
+import React, { useState, useEffect } from 'react';
+import {
+  DocumentVersion,
+  LogicalDocumentSummary,
+} from '../types/document';
+import {
+  getLogicalDocuments,
+  retryFailedVersion,
+  deleteDocumentVersion,
+  deleteLogicalDocument,
+} from '../api/documents';
+import { StatusBadge } from './StatusBadge';
+import { ConfirmModal } from './ConfirmModal';
+import {
+  FileText,
+  Search,
+  RefreshCw,
+  Trash2,
+  AlertTriangle,
+  History,
+  ArrowLeft,
+  CheckCircle2,
+  Info,
+} from 'lucide-react';
+
+interface DocumentWorkspaceProps {
+  initialDocumentId?: string | null;
+  onNavigateToRetrieval?: (docId: string) => void;
+}
+
+export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
+  initialDocumentId,
+  onNavigateToRetrieval,
+}) => {
+  const [documents, setDocuments] = useState<LogicalDocumentSummary[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(initialDocumentId || null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'READY' | 'FAILED' | 'PROCESSING'>('ALL');
+  const [isLoading, setIsLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  // Retry state
+  const [retryingVersionId, setRetryingVersionId] = useState<string | null>(null);
+
+  // Deletion modals
+  const [versionToDelete, setVersionToDelete] = useState<{
+    version: DocumentVersion;
+    doc: LogicalDocumentSummary;
+  } | null>(null);
+  const [logicalDocToDelete, setLogicalDocToDelete] = useState<LogicalDocumentSummary | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const loadDocuments = async () => {
+    setIsLoading(true);
+    setActionError(null);
+    try {
+      const docs = await getLogicalDocuments();
+      setDocuments(docs);
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to load document library.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDocuments();
+  }, []);
+
+  useEffect(() => {
+    if (initialDocumentId) {
+      setSelectedDocId(initialDocumentId);
+    }
+  }, [initialDocumentId]);
+
+  const selectedDocument = documents.find(
+    (d) =>
+      d.logical_document_id === selectedDocId ||
+      d.versions.some((v) => v.id === selectedDocId)
+  );
+
+  const filteredDocuments = documents.filter((doc) => {
+    const matchesSearch =
+      doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.logical_document_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (doc.original_filename && doc.original_filename.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesStatus =
+      statusFilter === 'ALL' || doc.current_status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Handle Retry
+  const handleRetry = async (versionId: string) => {
+    setRetryingVersionId(versionId);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const res = await retryFailedVersion(versionId);
+      if (res.success) {
+        setActionSuccess(`Version ${res.version.version_number} successfully reprocessed and is now READY (Current).`);
+        await loadDocuments();
+      }
+    } catch (err: any) {
+      setActionError(err?.message || 'Retry failed.');
+    } finally {
+      setRetryingVersionId(null);
+    }
+  };
+
+  // Handle Delete Version
+  const handleConfirmDeleteVersion = async () => {
+    if (!versionToDelete) return;
+    setIsDeleting(true);
+    setActionError(null);
+
+    try {
+      const res = await deleteDocumentVersion(versionToDelete.version.id);
+      if (res.success) {
+        setActionSuccess(
+          `Version ${versionToDelete.version.version_number} deleted.` +
+            (res.promotedVersionId ? ' The newest READY version was promoted to current.' : '')
+        );
+        setVersionToDelete(null);
+        await loadDocuments();
+      }
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to delete version.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Handle Delete Logical Document
+  const handleConfirmDeleteLogical = async () => {
+    if (!logicalDocToDelete) return;
+    setIsDeleting(true);
+    setActionError(null);
+
+    try {
+      const res = await deleteLogicalDocument(logicalDocToDelete.logical_document_id);
+      if (res.success) {
+        setActionSuccess(`Logical document "${logicalDocToDelete.title}" and all its versions were removed.`);
+        setLogicalDocToDelete(null);
+        setSelectedDocId(null);
+        await loadDocuments();
+      }
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to delete document.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <div className="document-workspace">
+      {/* Backend API Notice Banner */}
+      <div
+        className="glass-card"
+        style={{
+          padding: '0.85rem 1.25rem',
+          marginBottom: '1.25rem',
+          background: 'rgba(30, 41, 59, 0.4)',
+          borderLeft: '4px solid var(--accent-cyan)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.85rem',
+        }}
+      >
+        <Info size={18} color="#06b6d4" style={{ flexShrink: 0 }} />
+        <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
+          <strong>Document Lifecycle & Ingestion Architecture:</strong> All lifecycle operations
+          faithfully reflect backend semantics (Content-hash idempotency, versioning, promotion of newest
+          READY version upon current-version deletion, and pgvector READY-only retrieval filtering).
+        </div>
+      </div>
+
+      {actionSuccess && (
+        <div className="success-banner" style={{ marginBottom: '1.25rem' }}>
+          <CheckCircle2 size={18} color="#10b981" />
+          <span>{actionSuccess}</span>
+          <button type="button" className="modal-close-btn" onClick={() => setActionSuccess(null)}>
+            &times;
+          </button>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="error-banner" style={{ marginBottom: '1.25rem' }}>
+          <AlertTriangle size={18} color="#f43f5e" />
+          <div style={{ flex: 1 }}>
+            <div className="error-title">Action Failed</div>
+            <div className="error-desc">{actionError}</div>
+          </div>
+          <button type="button" className="modal-close-btn" onClick={() => setActionError(null)}>
+            &times;
+          </button>
+        </div>
+      )}
+
+      {selectedDocument ? (
+        /* ================= DOCUMENT DETAIL VIEW ================= */
+        <div className="document-detail-container">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setSelectedDocId(null)}
+            style={{ marginBottom: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <ArrowLeft size={16} /> Back to Document Library
+          </button>
+
+          {/* Document Header Card */}
+          <div className="glass-card" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#f8fafc' }}>
+                    {selectedDocument.title}
+                  </h2>
+                  <StatusBadge status={selectedDocument.current_status} isCurrent={true} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginTop: '0.6rem', color: '#94a3b8', fontSize: '0.8rem', flexWrap: 'wrap' }}>
+                  <span>
+                    Type: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.document_type}</strong>
+                  </span>
+                  <span>
+                    Source: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.source || 'Standard Ingestion'}</strong>
+                  </span>
+                  {selectedDocument.original_filename && (
+                    <span>
+                      File: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.original_filename}</strong>
+                    </span>
+                  )}
+                  <span>
+                    Total Versions: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.total_versions}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                {onNavigateToRetrieval && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => onNavigateToRetrieval(selectedDocument.logical_document_id)}
+                    style={{ fontSize: '0.8rem' }}
+                  >
+                    <Search size={14} /> Search This Doc
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => setLogicalDocToDelete(selectedDocument)}
+                  style={{ fontSize: '0.8rem' }}
+                >
+                  <Trash2 size={14} /> Delete Logical Doc
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1.25rem', padding: '0.85rem 1rem', background: 'rgba(15,23,42,0.6)', borderRadius: 8, fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: '#94a3b8' }}>
+              <div>Logical Document ID: <span style={{ color: '#f8fafc' }}>{selectedDocument.logical_document_id}</span></div>
+              <div style={{ marginTop: '0.2rem' }}>
+                Current Active Version ID: <span style={{ color: '#38bdf8' }}>{selectedDocument.current_version_id || 'None'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Version History Table / List */}
+          <div className="glass-card" style={{ padding: '1.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+              <History size={18} color="#818cf8" />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
+                Version History & Lifecycle States
+              </h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {selectedDocument.versions.map((version) => {
+                const isRetrying = retryingVersionId === version.id;
+
+                return (
+                  <div
+                    key={version.id}
+                    className="version-card glass-card"
+                    style={{
+                      padding: '1.25rem',
+                      borderColor: version.is_current ? 'rgba(99,102,241,0.4)' : undefined,
+                      background: version.is_current ? 'rgba(99,102,241,0.06)' : undefined,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span
+                          style={{
+                            fontSize: '0.9rem',
+                            fontWeight: 700,
+                            padding: '0.25rem 0.6rem',
+                            borderRadius: 6,
+                            background: 'rgba(15,23,42,0.8)',
+                            color: '#cbd5e1',
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          v{version.version_number}
+                        </span>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <StatusBadge status={version.status} isCurrent={version.is_current} size="sm" />
+                            {version.is_current && (
+                              <span style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: 600 }}>
+                                (Active for vector retrieval)
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.35rem', fontSize: '0.72rem', color: '#94a3b8' }}>
+                            <span>Attempt: {version.processing_attempt}</span>
+                            <span>Created: {new Date(version.created_at).toLocaleString()}</span>
+                            {version.stored_file && (
+                              <span>File: {version.stored_file.original_filename} ({version.stored_file.size_bytes} bytes)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Version Action buttons */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {version.status === 'FAILED' && (
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', background: '#e11d48' }}
+                            onClick={() => handleRetry(version.id)}
+                            disabled={isRetrying}
+                          >
+                            {isRetrying ? (
+                              <>
+                                <span className="spinner-ring" style={{ width: 12, height: 12, borderWidth: 2 }} />
+                                Retrying...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw size={13} />
+                                Retry Version
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          style={{ fontSize: '0.75rem', color: '#f43f5e' }}
+                          onClick={() => setVersionToDelete({ version, doc: selectedDocument })}
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Failure reason if FAILED */}
+                    {version.last_error && (
+                      <div
+                        style={{
+                          marginTop: '0.75rem',
+                          padding: '0.75rem 1rem',
+                          background: 'rgba(244,63,94,0.1)',
+                          border: '1px solid rgba(244,63,94,0.25)',
+                          borderRadius: 6,
+                          fontSize: '0.78rem',
+                          color: '#fecdd3',
+                        }}
+                      >
+                        <strong>Failure Reason:</strong> {version.last_error}
+                      </div>
+                    )}
+
+                    {/* Technical version metadata drawer */}
+                    <div style={{ marginTop: '0.75rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
+                      Version ID: {version.id} | Content Hash: {version.content_hash.slice(0, 16)}...
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ================= DOCUMENT LIBRARY LIST VIEW ================= */
+        <div>
+          {/* Controls Bar */}
+          <div
+            className="glass-card"
+            style={{
+              padding: '1.25rem 1.5rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 260 }}>
+              <div className="input-wrapper" style={{ flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder="Search documents by title, filename, or ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(15,23,42,0.8)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 8,
+                    padding: '0.5rem 0.85rem',
+                    color: '#f8fafc',
+                    fontSize: '0.85rem',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(15,23,42,0.6)', padding: '0.2rem', borderRadius: 8 }}>
+                {(['ALL', 'READY', 'FAILED', 'PROCESSING'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    className={`nav-tab-btn ${statusFilter === filter ? 'active' : ''}`}
+                    onClick={() => setStatusFilter(filter)}
+                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={loadDocuments}
+                disabled={isLoading}
+                style={{ fontSize: '0.8rem' }}
+              >
+                <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Document Cards Grid */}
+          <div className="documents-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
+            {filteredDocuments.map((doc) => (
+              <div
+                key={doc.logical_document_id}
+                className="glass-card doc-card"
+                style={{
+                  padding: '1.5rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setSelectedDocId(doc.logical_document_id)}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <FileText size={18} color="#06b6d4" />
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
+                        {doc.document_type}
+                      </span>
+                    </div>
+                    <StatusBadge status={doc.current_status} isCurrent={true} size="sm" />
+                  </div>
+
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.5rem', lineHeight: '1.4' }}>
+                    {doc.title}
+                  </h3>
+
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <div>Source: <span style={{ color: '#cbd5e1' }}>{doc.source || 'Local Ingestion'}</span></div>
+                    {doc.original_filename && (
+                      <div>File: <span style={{ color: '#cbd5e1' }}>{doc.original_filename}</span></div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
+                  <span>
+                    Version <strong>v{doc.current_version_number}</strong> ({doc.total_versions} total)
+                  </span>
+                  <span style={{ color: '#818cf8', fontWeight: 600 }}>
+                    Manage Versions &rarr;
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredDocuments.length === 0 && !isLoading && (
+            <div className="glass-card empty-state" style={{ padding: '3rem' }}>
+              <FileText className="empty-icon" />
+              <p className="empty-title">No Documents Found</p>
+              <p className="empty-desc">
+                {searchQuery || statusFilter !== 'ALL'
+                  ? 'No documents match the active filter criteria.'
+                  : 'No ingested documents currently in the library.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Confirmation Dialog: Delete Version */}
+      <ConfirmModal
+        isOpen={!!versionToDelete}
+        title="Delete Document Version"
+        description={`Are you sure you want to delete version ${versionToDelete?.version.version_number} of "${versionToDelete?.doc.title}"?`}
+        details={
+          <div>
+            <p><strong>Consequences:</strong></p>
+            <ul style={{ paddingLeft: '1.25rem', marginTop: '0.35rem', lineHeight: '1.5' }}>
+              <li>The physical file and associated vector chunks will be deleted.</li>
+              {versionToDelete?.version.is_current && (
+                <li style={{ color: '#38bdf8' }}>
+                  This is the <strong>current version</strong>. Deleting it will automatically promote the newest remaining <strong>READY</strong> version to current.
+                </li>
+              )}
+            </ul>
+          </div>
+        }
+        confirmLabel="Delete Version"
+        isDestructive={true}
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDeleteVersion}
+        onCancel={() => setVersionToDelete(null)}
+      />
+
+      {/* Confirmation Dialog: Delete Logical Document */}
+      <ConfirmModal
+        isOpen={!!logicalDocToDelete}
+        title="Delete Entire Logical Document"
+        description={`Are you sure you want to delete the entire logical document "${logicalDocToDelete?.title}"?`}
+        details={
+          <div style={{ color: '#fda4af' }}>
+            <p><strong>CRITICAL WARNING:</strong></p>
+            <ul style={{ paddingLeft: '1.25rem', marginTop: '0.35rem', lineHeight: '1.5' }}>
+              <li>All {logicalDocToDelete?.total_versions} version(s) of this document will be permanently removed.</li>
+              <li>All extracted pages, sections, and vector embeddings in PostgreSQL + pgvector will be purged.</li>
+              <li>All physical files stored in storage will be deleted.</li>
+            </ul>
+          </div>
+        }
+        confirmLabel="Delete Entire Document"
+        isDestructive={true}
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDeleteLogical}
+        onCancel={() => setLogicalDocToDelete(null)}
+      />
+    </div>
+  );
+};
