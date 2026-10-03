@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -389,6 +390,52 @@ async def test_failed_ingestion_retains_original_file(
         await session.delete(stored_file)
         await session.delete(document)
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_ingestion_deletes_stored_file_when_initial_commit_fails(
+    tmp_path: Path,
+) -> None:
+    document_path = tmp_path / "commit-failure.md"
+    document_path.write_text(
+        f"# Commit Failure\n\nContent {uuid4()}",
+        encoding="utf-8",
+    )
+
+    file_storage = RecordingFileStorage(tmp_path / "storage")
+
+    async with async_session_factory() as session:
+        original_commit = session.commit
+        commit_mock = AsyncMock(
+            side_effect=RuntimeError("database commit failure"),
+        )
+        session.commit = commit_mock
+
+        service = IngestionService(
+            session,
+            embedding_provider=DeterministicEmbeddingProvider(
+                dimensions=384,
+            ),
+            file_storage=file_storage,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match="database commit failure",
+        ):
+            await service.ingest_file(
+                path=document_path,
+                loader=MarkdownLoader(),
+                title="Commit Failure Test",
+                document_type="research_paper",
+                source="integration-test",
+            )
+
+        assert len(file_storage.stored_keys) == 1
+        assert file_storage.deleted_keys == file_storage.stored_keys
+        assert not await file_storage.exists(file_storage.stored_keys[0])
+
+        session.commit = original_commit
 
 
 @pytest.mark.asyncio
