@@ -80,9 +80,13 @@ class FakeRetrievalService:
 
             self.last_trace = RetrievalTrace(
                 query=query,
+                original_query=query,
+                sub_queries=[query],
                 candidate_limit=(
                     candidate_limit if candidate_limit is not None else max(limit, 50)
                 ),
+                raw_candidate_count=1,
+                deduplicated_candidate_count=1,
                 candidates=[candidate],
                 final_results=[candidate],
                 context=RetrievalTraceContext(
@@ -194,6 +198,10 @@ def test_retrieval_search_trace_mode() -> None:
 
         assert trace["query"] == "research query"
         assert trace["candidate_limit"] == 50
+        assert trace["original_query"] == "research query"
+        assert trace["sub_queries"] == ["research query"]
+        assert trace["raw_candidate_count"] == 1
+        assert trace["deduplicated_candidate_count"] == 1
 
         assert len(trace["candidates"]) == 1
         assert len(trace["final_results"]) == 1
@@ -774,6 +782,10 @@ def test_research_ask_trace_mode() -> None:
         assert trace["query"] == ("What is retrieval augmented generation?")
 
         assert trace["candidate_limit"] == 50
+        assert trace["original_query"] == ("What is retrieval augmented generation?")
+        assert trace["sub_queries"] == ["What is retrieval augmented generation?"]
+        assert trace["raw_candidate_count"] == 1
+        assert trace["deduplicated_candidate_count"] == 1
 
         assert len(trace["candidates"]) == 1
         assert len(trace["final_results"]) == 1

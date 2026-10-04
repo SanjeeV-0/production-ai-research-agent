@@ -80,7 +80,11 @@ async def search(
 
         trace_response = RetrievalTraceResponse(
             query=trace.query,
+            original_query=trace.original_query,
+            sub_queries=trace.sub_queries,
             candidate_limit=trace.candidate_limit,
+            raw_candidate_count=trace.raw_candidate_count,
+            deduplicated_candidate_count=trace.deduplicated_candidate_count,
             candidates=[_trace_candidate_response(candidate) for candidate in trace.candidates],
             final_results=[_trace_candidate_response(result) for result in trace.final_results],
             context=context_response,

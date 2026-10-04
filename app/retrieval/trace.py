@@ -41,3 +41,8 @@ class RetrievalTrace:
     final_results: list[RetrievalTraceCandidate] = field(default_factory=list)
 
     context: RetrievalTraceContext | None = None
+
+    original_query: str = ""
+    sub_queries: list[str] = field(default_factory=list)
+    raw_candidate_count: int = 0
+    deduplicated_candidate_count: int = 0

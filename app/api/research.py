@@ -122,7 +122,13 @@ async def _execute_research(
     if trace and retrieval_service.last_trace is not None:
         response["trace"] = {
             "query": retrieval_service.last_trace.query,
+            "original_query": retrieval_service.last_trace.original_query,
+            "sub_queries": retrieval_service.last_trace.sub_queries,
             "candidate_limit": retrieval_service.last_trace.candidate_limit,
+            "raw_candidate_count": (retrieval_service.last_trace.raw_candidate_count),
+            "deduplicated_candidate_count": (
+                retrieval_service.last_trace.deduplicated_candidate_count
+            ),
             "candidates": [
                 {
                     "document_id": candidate.document_id,

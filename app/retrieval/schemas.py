@@ -60,7 +60,11 @@ class RetrievalTraceResponse(BaseModel):
     """Debug trace for a retrieval operation."""
 
     query: str
+    original_query: str
+    sub_queries: list[str]
     candidate_limit: int
+    raw_candidate_count: int
+    deduplicated_candidate_count: int
     candidates: list[RetrievalTraceCandidateResponse]
     final_results: list[RetrievalTraceCandidateResponse]
     context: RetrievalTraceContextResponse | None = None

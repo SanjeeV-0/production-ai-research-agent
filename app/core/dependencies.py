@@ -17,10 +17,39 @@ from app.generation.generation_service import GenerationService
 from app.generation.openrouter import OpenRouterGenerationProvider
 from app.ingestion.service import IngestionService
 from app.retrieval.cross_encoder import CrossEncoderReranker
+from app.retrieval.openrouter_decomposition import (
+    OpenRouterQueryDecompositionProvider,
+)
+from app.retrieval.query_decomposer import QueryDecomposer
 from app.retrieval.reranker import Reranker
 from app.retrieval.service import RetrievalService
 from app.storage.interface import FileStorage
 from app.storage.local import LocalFileStorage
+
+
+@lru_cache
+def get_query_decomposition_provider() -> OpenRouterQueryDecompositionProvider:
+    """Return the configured OpenRouter query decomposition provider."""
+
+    settings = get_settings()
+
+    if not settings.openrouter_api_key:
+        raise ValueError("OPENROUTER_API_KEY must be configured.")
+
+    return OpenRouterQueryDecompositionProvider(
+        api_key=settings.openrouter_api_key,
+        model=settings.openrouter_model,
+        base_url=settings.openrouter_base_url,
+        app_name=settings.openrouter_app_name,
+    )
+
+
+def get_query_decomposer() -> QueryDecomposer:
+    """Return the application query decomposer."""
+
+    return QueryDecomposer(
+        provider=get_query_decomposition_provider(),
+    )
 
 
 @lru_cache
@@ -64,6 +93,10 @@ async def get_retrieval_service(
         Reranker,
         Depends(get_reranker),
     ],
+    query_decomposer: Annotated[
+        QueryDecomposer,
+        Depends(get_query_decomposer),
+    ],
 ) -> RetrievalService:
     """Create a retrieval service for the current database session."""
 
@@ -71,6 +104,7 @@ async def get_retrieval_service(
         repository=DocumentRepository(session),
         embedding_provider=embedding_provider,
         reranker=reranker,
+        query_decomposer=query_decomposer,
     )
 
 

@@ -5,6 +5,7 @@ from app.embeddings.provider import EmbeddingProvider
 from app.generation.context import ContextAssembler
 from app.observability.langfuse import get_langfuse
 from app.retrieval.models import RetrievedChunk
+from app.retrieval.query_decomposer import QueryDecomposer
 from app.retrieval.reranker import Reranker
 from app.retrieval.trace import (
     RetrievalTrace,
@@ -22,11 +23,13 @@ class RetrievalService:
         embedding_provider: EmbeddingProvider,
         reranker: Reranker | None = None,
         context_assembler: ContextAssembler | None = None,
+        query_decomposer: QueryDecomposer | None = None,
     ) -> None:
         self.repository = repository
         self.embedding_provider = embedding_provider
         self.reranker = reranker
         self.context_assembler = context_assembler or ContextAssembler()
+        self.query_decomposer = query_decomposer
         self.last_trace: RetrievalTrace | None = None
 
     async def search(
@@ -124,15 +127,40 @@ class RetrievalService:
     ) -> list[RetrievedChunk]:
         """Execute retrieval without observability concerns."""
 
-        query_embedding = self.embedding_provider.embed_text(query)
+        if self.query_decomposer is None:
+            retrieval_queries = (query,)
+        else:
+            decomposition = await self.query_decomposer.decompose(query)
+            retrieval_queries = decomposition.sub_queries
 
-        candidates = await self.repository.search_similar_chunks(
-            query_embedding=query_embedding,
-            limit=candidate_limit,
-            max_distance=max_distance,
-            document_id=document_id,
-            section_id=section_id,
+        merged_candidates: dict[UUID, RetrievedChunk] = {}
+
+        raw_candidate_count = 0
+        merged_candidates = {}
+
+        for retrieval_query in retrieval_queries:
+            query_embedding = self.embedding_provider.embed_text(retrieval_query)
+
+            candidates = await self.repository.search_similar_chunks(
+                query_embedding=query_embedding,
+                limit=candidate_limit,
+                max_distance=max_distance,
+                document_id=document_id,
+                section_id=section_id,
+            )
+            raw_candidate_count += len(candidates)
+
+            for candidate in candidates:
+                existing = merged_candidates.get(candidate.chunk_id)
+
+                if existing is None or candidate.distance < existing.distance:
+                    merged_candidates[candidate.chunk_id] = candidate
+
+        candidates = sorted(
+            merged_candidates.values(),
+            key=lambda chunk: chunk.distance,
         )
+        deduplicated_candidate_count = len(merged_candidates)
 
         if self.reranker is None:
             final_results = candidates[:limit]
@@ -147,6 +175,10 @@ class RetrievalService:
         if trace:
             self.last_trace = RetrievalTrace(
                 query=query,
+                original_query=query,
+                sub_queries=list(retrieval_queries),
+                raw_candidate_count=raw_candidate_count,
+                deduplicated_candidate_count=deduplicated_candidate_count,
                 candidate_limit=candidate_limit,
                 candidates=[self._to_trace_candidate(chunk) for chunk in candidates],
                 final_results=[self._to_trace_candidate(chunk) for chunk in final_results],
