@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
+from app.api.documents import router as documents_router
 from app.api.research import router as research_router
 from app.api.retrieval import router as retrieval_router
 from app.config.settings import get_settings
@@ -20,6 +21,7 @@ app = FastAPI(
 )
 app.include_router(retrieval_router)
 app.include_router(research_router)
+app.include_router(documents_router)
 
 
 @app.on_event("startup")

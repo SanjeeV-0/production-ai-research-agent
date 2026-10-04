@@ -53,6 +53,7 @@ class IngestionService:
         document_type: str,
         logical_document_id: UUID | None = None,
         source: str | None = None,
+        original_filename: str | None = None,
     ) -> Document:
         file_bytes = path.read_bytes()
         pages = loader.load(path)
@@ -91,7 +92,7 @@ class IngestionService:
             stored_file = StoredFile(
                 id=file_id,
                 document_id=document.id,
-                original_filename=path.name,
+                original_filename=original_filename or path.name,
                 content_hash=file_hash,
                 size_bytes=len(file_bytes),
                 storage_key=storage_key,
@@ -234,5 +235,11 @@ class IngestionService:
             )
 
             await self.session.commit()
+
+            # Attach the persisted FAILED version to the exception itself
+            # (without changing its type or message) so a caller such as
+            # the HTTP layer can report that version back to the client
+            # instead of losing it behind a generic error.
+            exc.failed_document = document
 
             raise

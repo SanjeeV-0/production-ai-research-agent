@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends
@@ -12,9 +13,12 @@ from app.embeddings.sentence_transformer import (
 )
 from app.generation.generation_service import GenerationService
 from app.generation.openrouter import OpenRouterGenerationProvider
+from app.ingestion.service import IngestionService
 from app.retrieval.cross_encoder import CrossEncoderReranker
 from app.retrieval.reranker import Reranker
 from app.retrieval.service import RetrievalService
+from app.storage.interface import FileStorage
+from app.storage.local import LocalFileStorage
 
 
 @lru_cache
@@ -96,3 +100,46 @@ def get_generation_service(
     return GenerationService(
         provider=provider,
     )
+
+
+@lru_cache
+def get_file_storage() -> FileStorage:
+    """Return the application file storage backend."""
+
+    settings = get_settings()
+
+    return LocalFileStorage(Path(settings.storage_root))
+
+
+async def get_ingestion_service(
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db_session),
+    ],
+    embedding_provider: Annotated[
+        SentenceTransformerEmbeddingProvider,
+        Depends(get_embedding_provider),
+    ],
+    file_storage: Annotated[
+        FileStorage,
+        Depends(get_file_storage),
+    ],
+) -> IngestionService:
+    """Create an ingestion service for the current database session."""
+
+    return IngestionService(
+        session=session,
+        embedding_provider=embedding_provider,
+        file_storage=file_storage,
+    )
+
+
+def get_document_repository(
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db_session),
+    ],
+) -> DocumentRepository:
+    """Create a document repository for the current database session."""
+
+    return DocumentRepository(session)

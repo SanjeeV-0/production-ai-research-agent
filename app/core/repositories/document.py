@@ -258,3 +258,33 @@ class DocumentRepository:
         )
 
         return list(result.scalars().all())
+
+    async def list_logical_documents(self) -> list[tuple[UUID, Document | None]]:
+        """Return every distinct logical document paired with its current
+        version, or None when no version is currently marked current."""
+
+        logical_id_result = await self.session.execute(
+            select(Document.logical_document_id).distinct().order_by(Document.logical_document_id)
+        )
+
+        logical_document_ids = [row[0] for row in logical_id_result.all()]
+
+        if not logical_document_ids:
+            return []
+
+        current_version_result = await self.session.execute(
+            select(Document).where(
+                Document.logical_document_id.in_(logical_document_ids),
+                Document.is_current.is_(True),
+            )
+        )
+
+        current_version_by_logical_id = {
+            document.logical_document_id: document
+            for document in current_version_result.scalars().all()
+        }
+
+        return [
+            (logical_document_id, current_version_by_logical_id.get(logical_document_id))
+            for logical_document_id in logical_document_ids
+        ]
