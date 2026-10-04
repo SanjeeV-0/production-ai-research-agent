@@ -1364,6 +1364,108 @@ def test_delete_document_version_succeeds(client: TestClient) -> None:
     assert deletion_service.deleted_versions == [version.id]
 
 
+def test_delete_document_version_response_has_no_body(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    version = make_document(logical_document_id=logical_document_id, is_current=False)
+
+    override(get_document_repository, FakeDocumentRepository([version]))
+    override(get_document_deletion_service, FakeDocumentDeletionService())
+
+    response = client.delete(f"/documents/{logical_document_id}/versions/{version.id}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+def test_delete_failed_version_succeeds(client: TestClient) -> None:
+    """READY, FAILED, and PROCESSING versions may all be deleted."""
+
+    logical_document_id = uuid4()
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.FAILED,
+        is_current=False,
+    )
+
+    deletion_service = FakeDocumentDeletionService()
+
+    override(get_document_repository, FakeDocumentRepository([failed_version]))
+    override(get_document_deletion_service, deletion_service)
+
+    response = client.delete(f"/documents/{logical_document_id}/versions/{failed_version.id}")
+
+    assert response.status_code == 204
+    assert deletion_service.deleted_versions == [failed_version.id]
+
+
+def test_delete_processing_version_succeeds(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    processing_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.PROCESSING,
+        is_current=False,
+    )
+
+    deletion_service = FakeDocumentDeletionService()
+
+    override(get_document_repository, FakeDocumentRepository([processing_version]))
+    override(get_document_deletion_service, deletion_service)
+
+    response = client.delete(f"/documents/{logical_document_id}/versions/{processing_version.id}")
+
+    assert response.status_code == 204
+    assert deletion_service.deleted_versions == [processing_version.id]
+
+
+def test_delete_version_mismatched_with_logical_document_returns_404(
+    client: TestClient,
+) -> None:
+    """version_id exists, but not under the logical_document_id in the URL --
+    this must not reveal that the version exists elsewhere."""
+
+    version = make_document(logical_document_id=uuid4(), is_current=False)
+
+    deletion_service = FakeDocumentDeletionService()
+
+    override(get_document_repository, FakeDocumentRepository([version]))
+    override(get_document_deletion_service, deletion_service)
+
+    other_logical_document_id = uuid4()
+    response = client.delete(f"/documents/{other_logical_document_id}/versions/{version.id}")
+
+    assert response.status_code == 404
+    assert deletion_service.deleted_versions == []
+
+
+def test_delete_version_both_ids_unknown_returns_404(client: TestClient) -> None:
+    deletion_service = FakeDocumentDeletionService()
+
+    override(get_document_repository, FakeDocumentRepository([]))
+    override(get_document_deletion_service, deletion_service)
+
+    response = client.delete(f"/documents/{uuid4()}/versions/{uuid4()}")
+
+    assert response.status_code == 404
+    assert deletion_service.deleted_versions == []
+
+
+def test_delete_version_physical_file_failure_propagates(client: TestClient) -> None:
+    """Physical-file deletion failure must propagate rather than pretending
+    the deletion fully succeeded -- it must not be reported as 204."""
+
+    logical_document_id = uuid4()
+    version = make_document(logical_document_id=logical_document_id, is_current=False)
+
+    deletion_service = FakeDocumentDeletionService()
+    deletion_service.raise_on_delete_version = RuntimeError("Could not delete physical file.")
+
+    override(get_document_repository, FakeDocumentRepository([version]))
+    override(get_document_deletion_service, deletion_service)
+
+    with pytest.raises(RuntimeError, match="Could not delete physical file."):
+        client.delete(f"/documents/{logical_document_id}/versions/{version.id}")
+
+
 # ---------------------------------------------------------------------------
 # 12. Deleting an entire logical document
 # ---------------------------------------------------------------------------

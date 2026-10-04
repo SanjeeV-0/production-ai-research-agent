@@ -8,10 +8,11 @@ reused unchanged.
 
 Only `POST /documents`, `GET /documents`,
 `GET /documents/{logical_document_id}`,
-`GET /documents/{logical_document_id}/versions`, and
-`POST /documents/{logical_document_id}/versions/{version_id}/retry` are
-implemented so far. The remaining approved routes (version deletion,
-logical-document deletion) are intentionally not implemented yet.
+`GET /documents/{logical_document_id}/versions`,
+`POST /documents/{logical_document_id}/versions/{version_id}/retry`, and
+`DELETE /documents/{logical_document_id}/versions/{version_id}` are
+implemented so far. `DELETE /documents/{logical_document_id}`
+(logical-document deletion) is intentionally not implemented yet.
 """
 
 import tempfile
@@ -21,9 +22,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.core.dependencies import get_document_repository, get_ingestion_service
+from app.core.dependencies import (
+    get_document_deletion_service,
+    get_document_repository,
+    get_ingestion_service,
+)
 from app.core.models import Document
 from app.core.repositories.document import DocumentRepository
+from app.core.services.document_deletion import DocumentDeletionService
 from app.ingestion.loaders.base import DocumentLoader
 from app.ingestion.loaders.resolver import resolve_loader_for_filename
 from app.ingestion.schemas import DocumentVersionResponse, LogicalDocumentResponse
@@ -267,3 +273,44 @@ async def retry_document_version(
             raise
 
     return DocumentVersionResponse.model_validate(document)
+
+
+@router.delete(
+    "/{logical_document_id}/versions/{version_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_document_version(
+    logical_document_id: UUID,
+    version_id: UUID,
+    document_repository: Annotated[
+        DocumentRepository,
+        Depends(get_document_repository),
+    ],
+    document_deletion_service: Annotated[
+        DocumentDeletionService,
+        Depends(get_document_deletion_service),
+    ],
+) -> None:
+    """Delete one document version via the existing DocumentDeletionService,
+    reusing its existing transaction/storage consistency semantics (DB
+    deletion commits before the physical file is deleted; a physical-file
+    deletion failure propagates rather than claiming success).
+
+    If the deleted version was current, the newest remaining READY version
+    (if any) becomes current -- FAILED/PROCESSING versions are never
+    promoted. This endpoint has no confirmation mechanism; that is a
+    frontend concern.
+    """
+
+    version = await document_repository.get_by_id(version_id)
+
+    if version is None or version.logical_document_id != logical_document_id:
+        # Covers both "doesn't exist" and "belongs to a different logical
+        # document" with the same 404, rather than revealing it exists
+        # elsewhere.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document version not found: {version_id}",
+        )
+
+    await document_deletion_service.delete_version(version_id)
