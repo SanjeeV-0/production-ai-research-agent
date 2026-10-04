@@ -3,6 +3,12 @@
 embeds and stores), enforcing a maximum per-chunk token budget (passed in by
 the caller -- hard-coded to 500 in `IngestionService._process_document`).
 
+Also owns `fragment_table_units`, the pre-fragmentation pass that MUST run
+on `StructureExtractor`'s output before `shred_semantically`/`apply_size_guard`
+ever see a TABLE unit (see `apply_size_guard`'s ValueError below) -- it is
+co-located here because both functions enforce the same `max_tokens` budget,
+just for different content shapes (prose vs. table rows).
+
 `estimate_tokens` is explicitly a whitespace-word-count approximation, not a
 real tokenizer -- documented here as a deliberate, deterministic,
 dependency-free placeholder rather than an oversight.
@@ -15,6 +21,7 @@ from uuid import UUID
 from app.ingestion.section_map import SectionMap
 from app.ingestion.semantic_shredder import SemanticUnit
 from app.ingestion.structure import StructuralUnit, UnitType
+from app.ingestion.table_chunker import split_table
 
 
 @dataclass(frozen=True)
@@ -28,6 +35,62 @@ class ChildChunk:
     section_path: str | None
     section_level: int
     source_units: tuple[StructuralUnit, ...]
+
+
+def fragment_table_units(
+    units: list[StructuralUnit],
+    max_tokens: int,
+) -> list[StructuralUnit]:
+    """Pre-fragment every TABLE unit so its content already fits `max_tokens`
+    before `shred_semantically`/`apply_size_guard` ever see it.
+
+    `shred_semantically` always isolates a TABLE unit into its own
+    `SemanticUnit` (never merges it with surrounding prose), and
+    `apply_size_guard` cannot itself split an oversized table (splitting a
+    markdown table by sentence/word boundaries the way prose is split would
+    destroy its row structure) -- it raises instead. So fragmentation MUST
+    happen here, upstream, using the existing row-group splitting algorithm
+    (`app.ingestion.table_chunker.split_table`), which keeps each fragment a
+    valid, self-contained markdown table (headers repeated on every
+    fragment) and is called unconditionally for every table, even one
+    already under `max_tokens` (it simply returns a single fragment in that
+    case).
+
+    Non-TABLE units pass through unchanged. A table whose single largest row
+    (with headers) still exceeds `max_tokens` on its own cannot be split
+    further by `split_table` (it only splits at row boundaries, not within a
+    row) -- that remains a known, documented limitation: such a fragment
+    would still trip `apply_size_guard`'s ValueError below.
+    """
+
+    fragmented: list[StructuralUnit] = []
+
+    for unit in units:
+        if unit.unit_type != UnitType.TABLE or unit.table is None:
+            fragmented.append(unit)
+            continue
+
+        for fragment in split_table(unit.table, max_tokens=max_tokens):
+            fragmented.append(
+                StructuralUnit(
+                    unit_type=UnitType.TABLE,
+                    content=fragment.content,
+                    page_numbers=fragment.page_numbers,
+                    section_path=unit.section_path,
+                    section_level=unit.section_level,
+                    section_index=unit.section_index,
+                    table=unit.table,
+                    metadata={
+                        "content_type": "table",
+                        "table_id": fragment.table_id,
+                        "table_title": fragment.title,
+                        "table_fragment_index": fragment.fragment_index,
+                        "table_fragment_count": fragment.fragment_count,
+                    },
+                )
+            )
+
+    return fragmented
 
 
 def estimate_tokens(text: str) -> int:
@@ -221,6 +284,12 @@ def apply_size_guard(
 
         for unit in semantic_unit.units:
             if unit.unit_type == UnitType.TABLE:
+                # Reaching here means a TABLE unit arrived without having
+                # been pre-fragmented by `fragment_table_units` (or a single
+                # fragment's largest row still didn't fit `max_tokens` --
+                # see that function's docstring). Tables can't be split by
+                # sentence/word boundaries like prose without destroying
+                # their structure, so this is a hard stop, not a fallback.
                 raise ValueError(
                     "Table exceeds size guard; table fragmentation must occur before size guard."
                 )

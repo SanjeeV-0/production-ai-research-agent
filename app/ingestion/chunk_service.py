@@ -12,6 +12,7 @@ from app.core.models import ChunkPageMap, DocumentChunk
 from app.core.repositories.document import DocumentRepository
 from app.embeddings.provider import EmbeddingProvider
 from app.ingestion.size_guard import ChildChunk
+from app.ingestion.structure import UnitType
 
 
 class ChunkService:
@@ -50,6 +51,18 @@ class ChunkService:
             embeddings,
             strict=True,
         ):
+            # A table chunk's single source unit carries its
+            # content_type/table_id/fragment metadata (attached by
+            # fragment_table_units) -- surface it in chunk_metadata so a
+            # table chunk is distinguishable from a prose chunk after
+            # persistence, matching the `content_type: "table"` convention
+            # already used by the (unwired) structure_chunker.CandidateGroup
+            # metadata shape, kept consistent here on purpose.
+            table_metadata: dict[str, object] = {}
+
+            if len(chunk.source_units) == 1 and chunk.source_units[0].unit_type == UnitType.TABLE:
+                table_metadata = dict(chunk.source_units[0].metadata)
+
             document_chunk = DocumentChunk(
                 document_id=document_id,
                 section_id=chunk.section_id,
@@ -58,6 +71,7 @@ class ChunkService:
                 chunk_metadata={
                     "page_numbers": chunk.page_numbers,
                     "section_path": chunk.section_path,
+                    **table_metadata,
                 },
                 embedding=embedding,
             )

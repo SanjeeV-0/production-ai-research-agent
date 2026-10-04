@@ -71,8 +71,14 @@ def test_docx_loader_returns_empty_content_for_document_with_no_text(tmp_path: P
 
 def test_docx_loader_includes_table_text_after_paragraphs(tmp_path: Path) -> None:
     """Tables are supported via the simple, documented ordering: all
-    paragraph text first, then each table's row text -- not interleaved at
-    the table's true position in the document."""
+    paragraph text first, then each table rendered as a real Markdown pipe
+    table -- not interleaved at the table's true position in the document.
+
+    The table is rendered as genuine pipe-table syntax (header row + a
+    `|---|---|` separator), with the table's first row treated as its
+    header, rather than a flat "cell | cell" text line -- this is what lets
+    StructureExtractor detect it downstream as a real TABLE structural unit.
+    """
 
     docx_path = tmp_path / "test.docx"
 
@@ -90,4 +96,35 @@ def test_docx_loader_includes_table_text_after_paragraphs(tmp_path: Path) -> Non
     loader = DocxLoader()
     pages = loader.load(docx_path)
 
-    assert pages[0].content == ("Introduction paragraph.\nHeader A | Header B\nValue 1 | Value 2")
+    assert pages[0].content == (
+        "Introduction paragraph.\n\n| Header A | Header B |\n| --- | --- |\n| Value 1 | Value 2 |"
+    )
+
+
+def test_docx_loader_renders_multiple_tables_with_distinct_ids(tmp_path: Path) -> None:
+    """Multiple tables in one document each round-trip as their own
+    independent Markdown table block, detectable as separate TABLE units."""
+
+    docx_path = tmp_path / "test.docx"
+
+    document = DocxDocument()
+
+    first_table = document.add_table(rows=2, cols=2)
+    first_table.cell(0, 0).text = "A"
+    first_table.cell(0, 1).text = "B"
+    first_table.cell(1, 0).text = "1"
+    first_table.cell(1, 1).text = "2"
+
+    second_table = document.add_table(rows=2, cols=1)
+    second_table.cell(0, 0).text = "Only Column"
+    second_table.cell(1, 0).text = "Value"
+
+    document.save(docx_path)
+
+    loader = DocxLoader()
+    pages = loader.load(docx_path)
+
+    assert "| A | B |" in pages[0].content
+    assert "| 1 | 2 |" in pages[0].content
+    assert "| Only Column |" in pages[0].content
+    assert "| Value |" in pages[0].content

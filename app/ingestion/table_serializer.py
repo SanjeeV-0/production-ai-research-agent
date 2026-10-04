@@ -1,7 +1,14 @@
-"""NOT part of the active ingestion pipeline -- see
-`app.ingestion.structure_chunker` module docstring. Only reachable from
-`app.ingestion.table_chunker.split_table`. Covered by
-tests/unit/test_table_serializer.py.
+"""Serializes a `TableData` into a standard Markdown pipe table.
+
+Part of the active ingestion pipeline, used from three places: (1)
+`app.ingestion.structure_extractor.StructureExtractor`, which re-serializes
+every table it detects through this function so a TABLE unit's `content` has
+canonical formatting regardless of source whitespace; (2)
+`app.ingestion.loaders.docx.DocxLoader`, which renders python-docx's
+structured table data as this same pipe-table syntax so `StructureExtractor`
+can detect it; (3) `app.ingestion.table_chunker.split_table`, which
+re-serializes each fragment. Also still reachable from the separate, unused
+`structure_chunker.group_structural_units`.
 """
 
 from app.ingestion.structure import TableData

@@ -1,7 +1,14 @@
-"""NOT part of the active ingestion pipeline -- see
-`app.ingestion.structure_chunker` module docstring for why. Only reachable
-from `structure_chunker.group_structural_units`, which is itself unused by
-`IngestionService`. Covered by tests/unit/test_table_chunker.py.
+"""Splits an oversized `TableData` into row-group `TableFragment`s that each
+fit a token budget, keeping every fragment a valid, self-contained Markdown
+table (headers repeated on each fragment via `table_serializer`).
+
+Part of the active ingestion pipeline: `app.ingestion.size_guard.
+fragment_table_units` calls `split_table` on every TABLE unit produced by
+`StructureExtractor`, before `shred_semantically`/`apply_size_guard` ever
+see it (see that function's docstring for why the ordering matters). Also
+still reachable from the separate, unused `structure_chunker.
+group_structural_units` (see that module's docstring) -- both call sites
+share this one splitting implementation rather than duplicating it.
 """
 
 from dataclasses import dataclass

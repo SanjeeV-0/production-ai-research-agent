@@ -87,3 +87,20 @@ def test_context_assembler_never_partially_includes_chunk() -> None:
 def test_context_assembler_rejects_negative_budget() -> None:
     with pytest.raises(ValueError):
         ContextAssembler(max_characters=-1)
+
+
+def test_context_assembler_passes_table_markdown_through_unchanged() -> None:
+    """A table chunk's content is just text to ContextAssembler -- no
+    special-cased table generation path exists or is needed."""
+
+    table_chunk = _chunk(
+        "| Model | Score |\n| --- | --- |\n| A | 0.90 |\n| B | 0.85 |",
+        1,
+    )
+
+    context = ContextAssembler().assemble([table_chunk])
+
+    assert context.text == (
+        "[Source 1]\n| Model | Score |\n| --- | --- |\n| A | 0.90 |\n| B | 0.85 |"
+    )
+    assert context.sources[0].chunk_id == table_chunk.chunk_id

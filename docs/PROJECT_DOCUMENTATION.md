@@ -144,9 +144,10 @@ app/
     size_guard.py                            Final token-budget chunk splitting
     chunk_service.py                          Persists DocumentChunk rows + embeddings + page mappings
     similarity.py                              cosine_similarity() helper used by semantic_shredder
+    table_chunker.py, table_serializer.py       Table splitting/Markdown serialization — ACTIVE
+                                                 (called from structure_extractor.py and size_guard.py)
     chunker.py, structure_chunker.py,          NOT part of the active ingestion pipeline —
-    table_chunker.py, table_serializer.py,     see §20 "Known Limitations"
-    testing_similarity.py
+    testing_similarity.py                      see §20 "Known Limitations"
   storage/
     interface.py                 FileStorage abstract base class
     local.py                      LocalFileStorage — filesystem implementation
@@ -539,39 +540,67 @@ backfilling every pre-existing row as its own version 1) → `7991853c5dd5` (add
 ## 8. Chunking and Provenance
 
 Pipeline (see §3 step 10 for the orchestration): `StructureExtractor.extract` →
-`SectionBuilder.build` → `SectionService.persist_sections` → `shred_semantically` →
-`apply_size_guard` → `ChunkService.persist_chunks`.
+`fragment_table_units` → `SectionBuilder.build` → `SectionService.persist_sections` →
+`shred_semantically` → `apply_size_guard` → `ChunkService.persist_chunks`.
 
 - **`StructureExtractor`** (`app/ingestion/structure_extractor.py`) walks each `LoadedPage`'s
-  text line by line with two regexes: a Markdown heading pattern (`^#{1,6}\s+...`) and a list
-  pattern (`^[-*+]\s+` or `^\d+[.)]\s+`). It tracks a heading stack to build a `section_path`
-  like `"Introduction > Background"` for every unit, and emits `StructuralUnit`s of type
-  `HEADING`, `PARAGRAPH`, or `LIST`. **It never emits `UnitType.TABLE`** — there is a `TABLE`
-  enum value and a `TableData` dataclass (`app/ingestion/structure.py`), and dedicated
-  table-splitting code (`table_chunker.py`, `table_serializer.py`), but nothing in the active
-  pipeline produces a `TABLE` unit from a real document — see §20.
+  text line by line, recognizing a Markdown heading pattern (`^#{1,6}\s+...`), a list pattern
+  (`^[-*+]\s+` or `^\d+[.)]\s+`), and GitHub-Flavored-Markdown pipe tables (a header row
+  immediately followed by a `|---|---|`-style separator row). It tracks a heading stack to
+  build a `section_path` like `"Introduction > Background"` for every unit, and emits
+  `StructuralUnit`s of type `HEADING`, `PARAGRAPH`, `LIST`, or **`TABLE`** (with a populated
+  `TableData` of parsed `headers`/`rows`, re-serialized to canonical Markdown via
+  `table_serializer.table_to_markdown`). Table detection is intentionally limited to this one
+  real, well-defined text format — `MarkdownLoader` passes a `.md` file's own table syntax
+  straight through, and `DocxLoader` renders python-docx's genuinely structured
+  `document.tables` data as the same pipe-table syntax specifically so both are detected by
+  this one code path. **`PDFLoader` has no structural table extraction** (`pypdf.extract_text()`
+  returns flat text with no layout information), so PDF tables are not detected and ingest as
+  ordinary (often garbled) paragraph text — a real, documented limitation, not a gap this
+  extractor papers over. Single-column tables (only one header cell) are also not detected,
+  since the pipe-row/separator regexes require at least two columns.
+- **`fragment_table_units`** (`app/ingestion/size_guard.py`) pre-fragments every TABLE unit,
+  via the existing `app.ingestion.table_chunker.split_table`, so its content already fits the
+  chunk token budget before `shred_semantically`/`apply_size_guard` ever see it (see below for
+  why). Called unconditionally for every table (even ones already under budget, which simply
+  come back as a single fragment), tagging each resulting unit's `.metadata` with
+  `content_type: "table"`, `table_id`, `table_title`, `table_fragment_index`, and
+  `table_fragment_count` — propagated into the persisted chunk's `chunk_metadata` by
+  `ChunkService.persist_chunks`, so a table chunk is distinguishable from a prose chunk after
+  persistence. **Known limitation**: `split_table` only splits at row boundaries; if a single
+  row (plus headers) already exceeds the budget on its own, it cannot be shrunk further, and
+  the resulting chunk remains oversized (tripping `apply_size_guard`'s safety net below).
 - **`SectionBuilder`/`SectionService`** turn the sequence of `section_path` strings into a
   deduplicated hierarchy of `DocumentSection` rows (one per unique path, in first-appearance
   order), returning a `SectionMap` (`path → DocumentSection.id`) used to attach `section_id` to
-  chunks later.
+  chunks later. Fragmenting tables beforehand never changes which section paths exist, since
+  every fragment keeps its source table's original `section_path` unchanged.
 - **`shred_semantically`** (`app/ingestion/semantic_shredder.py`) embeds every prose unit
   (`PARAGRAPH`/`LIST`) once in a batch, then walks units in order and groups **adjacent** prose
   units into a `SemanticUnit` as long as: they're in the same section, and the cosine
   similarity between consecutive prose embeddings is `>= 0.7` (hard-coded threshold, passed as
   a literal in `IngestionService._process_document`). A `HEADING` always forces a break. A
-  `TABLE` unit (never actually produced today — see above) would always be its own unit. This
-  is **local, adjacent-pair similarity**, not global clustering.
+  `TABLE` unit is always isolated into its own `SemanticUnit`, never merged with surrounding
+  prose. This is **local, adjacent-pair similarity**, not global clustering.
 - **`apply_size_guard`** (`app/ingestion/size_guard.py`) converts each `SemanticUnit` into one
   or more final `ChildChunk`s, respecting a `max_tokens=500` budget (hard-coded literal passed
-  from `IngestionService`). "Tokens" here means **whitespace-split word count**
-  (`estimate_tokens`), not a real tokenizer — explicitly documented in the code as a
-  deterministic, dependency-free placeholder. Oversized content is split first at paragraph
-  boundaries, then sentence boundaries, then hard word-count boundaries, in that order.
+  from `IngestionService`, shared by `fragment_table_units` for the same document). "Tokens"
+  here means **whitespace-split word count** (`estimate_tokens`), not a real tokenizer —
+  explicitly documented in the code as a deterministic, dependency-free placeholder (this also
+  means pipe characters in a table row each count as their own "token", inflating a table
+  fragment's apparent size relative to prose of similar visual length). Oversized prose is
+  split first at paragraph boundaries, then sentence boundaries, then hard word-count
+  boundaries; an oversized `TABLE` unit cannot be split this way (splitting mid-row would
+  destroy its structure) and instead raises `ValueError` — a safety net that should never fire
+  in practice, since `fragment_table_units` already pre-fits every table fragment, except for
+  the single-oversized-row edge case noted above.
 - **`ChunkService.persist_chunks`** embeds all final chunk texts in one
   `embedding_provider.embed_batch()` call, persists one `DocumentChunk` per chunk (with
   `section_id`, `chunk_index`, `content`, `embedding`, and `chunk_metadata` containing
-  `page_numbers`/`section_path`), and persists one `ChunkPageMap` row per page the chunk's
-  source content actually spans.
+  `page_numbers`/`section_path`, plus the table metadata above when the chunk's source unit is
+  a TABLE), and persists one `ChunkPageMap` row per page the chunk's source content actually
+  spans. Table chunks flow through this exact same persistence code as prose chunks — no
+  separate table-persistence path exists.
 
 ### Headingless documents
 
@@ -1563,6 +1592,13 @@ Each of these was verified directly against the implementation referenced.
 16. **Storage keys never derive from user-supplied filenames**, and `LocalFileStorage`
     verifies every resolved path stays under its configured root before any file operation.
     (`app/storage/keys.py`, `app/storage/local.py::_resolve_path`)
+17. **Table chunks participate in the exact same persistence, provenance, and retrieval
+    system as prose chunks** — no separate table-retrieval path exists. A table chunk is only
+    distinguished by `chunk_metadata["content_type"] == "table"`; it is still filtered by the
+    same `status=READY AND is_current=true` rule, still subject to the same current-version
+    switching and deletion semantics, and still flows through `ContextAssembler` unchanged.
+    (`app/ingestion/size_guard.py::fragment_table_units`, `app/ingestion/chunk_service.py`;
+    `tests/integration/test_table_retrieval.py`)
 
 ---
 
@@ -1574,14 +1610,16 @@ These are factual gaps found in the repository, not a speculative roadmap.
   and `/research/ask` — their dependency chains eagerly construct an OpenRouter-backed query
   decomposer even though `RetrievalService` itself supports running with no decomposer at all.
   See §11.
-- **Table-aware chunking exists but is not wired into the active ingestion pipeline.**
-  `app/ingestion/table_chunker.py`, `table_serializer.py`, and `structure_chunker.py` (plus
-  the simpler `chunker.py`, and the `testing_similarity.py` test double) are only imported by
-  their own unit tests — `IngestionService`'s real pipeline
-  (`StructureExtractor`/`shred_semantically`/`apply_size_guard`) never produces a
-  `UnitType.TABLE` unit from any loader's output, so this code never runs against real uploaded
-  documents today. `DocxLoader` has its own, much simpler table handling (table rows appended
-  as plain `" | "`-joined text lines after all paragraph text).
+- **Table-aware chunking IS wired into the active ingestion pipeline** (`table_chunker.py`,
+  `table_serializer.py`, called from `StructureExtractor`/`size_guard.fragment_table_units` —
+  see §8). What remains unused is only the alternate candidate-grouping strategy in
+  `structure_chunker.py` (plus the unrelated `chunker.py` and the `testing_similarity.py` test
+  double), which `IngestionService` does not call. Table detection is Markdown-pipe-table-only:
+  supported for `.md` files (native syntax) and `.docx` (python-docx's structured
+  `document.tables`, rendered as the same pipe syntax). **PDF tables are not supported** —
+  `pypdf.extract_text()` has no layout/table structure to extract, so a table in a PDF ingests
+  as plain, often-garbled paragraph text. Single-column tables and a table whose single row
+  (with headers) alone exceeds the 500-token chunk budget are also not handled (see §8).
 - **The evaluation dataset is a placeholder.** `tests/evaluation/retrieval_cases.py` contains
   one case with invalid `UUID("...")` literals and is not imported/run by anything — see §20.
 - **No reconciliation/orphan-cleanup job exists** for a physical file left behind if deletion

@@ -30,7 +30,7 @@ from app.ingestion.schemas import DocumentInput
 from app.ingestion.section_builder import SectionBuilder
 from app.ingestion.section_service import SectionService
 from app.ingestion.semantic_shredder import shred_semantically
-from app.ingestion.size_guard import apply_size_guard
+from app.ingestion.size_guard import apply_size_guard, fragment_table_units
 from app.ingestion.structure_extractor import StructureExtractor
 from app.storage.interface import FileStorage
 from app.storage.keys import build_storage_key
@@ -223,7 +223,27 @@ class IngestionService:
 
                 page_ids[page.page_number] = document_page.id
 
+            # 0.7 similarity threshold and 500 token budget are hard-coded
+            # here, not Settings fields -- changing either requires editing
+            # this call site. They control, respectively, how aggressively
+            # adjacent paragraphs are grouped into one chunk before
+            # splitting, and the final per-chunk size cap (for both prose
+            # and table chunks, which share this one budget).
+            max_chunk_tokens = 500
+
             structural_units = self.structure_extractor.extract(pages)
+
+            # Tables must be pre-fragmented to fit max_chunk_tokens BEFORE
+            # section building/semantic shredding -- see
+            # fragment_table_units's docstring for why this ordering is
+            # required (shred_semantically/apply_size_guard cannot split an
+            # oversized table themselves). section_path/section_level are
+            # preserved unchanged on every resulting fragment, so this step
+            # never affects which sections SectionBuilder discovers.
+            structural_units = fragment_table_units(
+                structural_units,
+                max_tokens=max_chunk_tokens,
+            )
 
             section_nodes = self.section_builder.build(structural_units)
 
@@ -232,11 +252,6 @@ class IngestionService:
                 section_nodes,
             )
 
-            # 0.7 similarity threshold and 500 token budget are hard-coded
-            # here, not Settings fields -- changing either requires editing
-            # this call site. They control, respectively, how aggressively
-            # adjacent paragraphs are grouped into one chunk before
-            # splitting, and the final per-chunk size cap.
             semantic_units = shred_semantically(
                 structural_units,
                 embedding_provider=self.embedding_provider,
@@ -246,7 +261,7 @@ class IngestionService:
             child_chunks = apply_size_guard(
                 semantic_units,
                 section_map=section_map,
-                max_tokens=500,
+                max_tokens=max_chunk_tokens,
             )
 
             await self.chunk_service.persist_chunks(
