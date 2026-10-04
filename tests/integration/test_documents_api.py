@@ -103,6 +103,7 @@ def make_document(
     processing_attempt: int = 1,
     last_error: str | None = None,
     failed_at: datetime | None = None,
+    created_at: datetime | None = None,
 ) -> Document:
     """Build an in-memory `Document` row for use in fakes (never persisted).
 
@@ -111,6 +112,7 @@ def make_document(
     """
 
     now = datetime.now(UTC)
+    created = created_at or now
 
     return Document(
         id=document_id or uuid4(),
@@ -128,8 +130,8 @@ def make_document(
         failed_at=failed_at,
         last_error=last_error,
         document_metadata={},
-        created_at=now,
-        updated_at=now,
+        created_at=created,
+        updated_at=created,
     )
 
 
@@ -222,7 +224,8 @@ class FakeDocumentRepository:
         self,
         logical_document_id: UUID,
     ) -> list[Document]:
-        return [d for d in self.documents if d.logical_document_id == logical_document_id]
+        versions = [d for d in self.documents if d.logical_document_id == logical_document_id]
+        return sorted(versions, key=lambda d: d.version_number, reverse=True)
 
     async def get_current_version(self, logical_document_id: UUID) -> Document | None:
         return next(
@@ -923,6 +926,189 @@ def test_get_document_versions_lists_all_versions(client: TestClient) -> None:
 
     version_numbers = {item["version_number"] for item in body}
     assert version_numbers == {1, 2}
+
+
+def test_get_document_versions_returns_newest_first(client: TestClient) -> None:
+    """Results must be ordered by version_number DESC."""
+
+    logical_document_id = uuid4()
+    version_one = make_document(logical_document_id=logical_document_id, version_number=1)
+    version_two = make_document(logical_document_id=logical_document_id, version_number=2)
+    version_three = make_document(logical_document_id=logical_document_id, version_number=3)
+
+    # Inserted out of version-number order to prove the response is sorted,
+    # not merely returned in insertion order.
+    repository = FakeDocumentRepository([version_two, version_three, version_one])
+    override(get_document_repository, repository)
+
+    response = client.get(f"/documents/{logical_document_id}/versions")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert [item["version_number"] for item in body] == [3, 2, 1]
+
+
+def test_get_document_versions_ordering_is_by_version_number_not_timestamp(
+    client: TestClient,
+) -> None:
+    """Ordering must key on version_number, not created_at/updated_at --
+    even when timestamps disagree with version_number order."""
+
+    logical_document_id = uuid4()
+
+    # version_number 1 was (unrealistically) created AFTER version_number 2,
+    # to prove sorting does not fall back to timestamp order.
+    earlier_timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+    later_timestamp = datetime(2026, 6, 1, tzinfo=UTC)
+
+    version_two = make_document(
+        logical_document_id=logical_document_id,
+        version_number=2,
+        created_at=earlier_timestamp,
+    )
+    version_one = make_document(
+        logical_document_id=logical_document_id,
+        version_number=1,
+        created_at=later_timestamp,
+    )
+
+    repository = FakeDocumentRepository([version_one, version_two])
+    override(get_document_repository, repository)
+
+    response = client.get(f"/documents/{logical_document_id}/versions")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert [item["version_number"] for item in body] == [2, 1]
+
+
+def test_get_document_versions_includes_every_lifecycle_status(client: TestClient) -> None:
+    """All statuses are returned -- no filtering to current or READY-only."""
+
+    logical_document_id = uuid4()
+    ready_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=1,
+        is_current=True,
+        status=DocumentStatus.READY,
+    )
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=2,
+        is_current=False,
+        status=DocumentStatus.FAILED,
+        last_error="Embedding timed out.",
+    )
+    processing_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=3,
+        is_current=False,
+        status=DocumentStatus.PROCESSING,
+    )
+    uploaded_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=4,
+        is_current=False,
+        status=DocumentStatus.UPLOADED,
+    )
+
+    repository = FakeDocumentRepository(
+        [ready_version, failed_version, processing_version, uploaded_version]
+    )
+    override(get_document_repository, repository)
+
+    response = client.get(f"/documents/{logical_document_id}/versions")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert len(body) == 4
+
+    statuses_by_version_number = {item["version_number"]: item["status"] for item in body}
+    assert statuses_by_version_number == {
+        1: "READY",
+        2: "FAILED",
+        3: "PROCESSING",
+        4: "UPLOADED",
+    }
+
+
+def test_get_document_versions_preserves_is_current_flag(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    current_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=2,
+        is_current=True,
+        status=DocumentStatus.READY,
+    )
+    old_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=1,
+        is_current=False,
+        status=DocumentStatus.READY,
+    )
+
+    repository = FakeDocumentRepository([current_version, old_version])
+    override(get_document_repository, repository)
+
+    response = client.get(f"/documents/{logical_document_id}/versions")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    is_current_by_version_number = {item["version_number"]: item["is_current"] for item in body}
+    assert is_current_by_version_number == {2: True, 1: False}
+
+
+def test_get_document_versions_single_version(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    only_version = make_document(logical_document_id=logical_document_id, version_number=1)
+
+    repository = FakeDocumentRepository([only_version])
+    override(get_document_repository, repository)
+
+    response = client.get(f"/documents/{logical_document_id}/versions")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["id"] == str(only_version.id)
+    assert body[0]["version_number"] == 1
+
+
+def test_get_document_versions_unknown_logical_document_id_returns_404(
+    client: TestClient,
+) -> None:
+    override(get_document_repository, FakeDocumentRepository([]))
+
+    response = client.get(f"/documents/{uuid4()}/versions")
+
+    assert response.status_code == 404
+
+
+def test_get_document_versions_response_shape_is_canonical(client: TestClient) -> None:
+    """Each item is exactly the canonical DocumentVersionResponse shape --
+    the same contract as POST /documents and GET /documents's
+    current_version -- not a new/different version schema, and no
+    SQLAlchemy internals leak through."""
+
+    logical_document_id = uuid4()
+    document = make_document(logical_document_id=logical_document_id)
+
+    repository = FakeDocumentRepository([document])
+    override(get_document_repository, repository)
+
+    response = client.get(f"/documents/{logical_document_id}/versions")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert len(body) == 1
+    assert set(body[0].keys()) == EXPECTED_VERSION_FIELDS
+    assert FORBIDDEN_FIELDS.isdisjoint(body[0].keys())
 
 
 # ---------------------------------------------------------------------------

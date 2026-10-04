@@ -6,11 +6,11 @@ work (content-hash deduplication, versioning, chunking, embedding, status
 transitions) is performed by `app.ingestion.service.IngestionService`,
 reused unchanged.
 
-Only `POST /documents`, `GET /documents`, and
-`GET /documents/{logical_document_id}` are implemented so far. The remaining
-approved routes (GET /documents/{logical_document_id}/versions, retry,
-version deletion, logical-document deletion) are intentionally not
-implemented yet.
+Only `POST /documents`, `GET /documents`,
+`GET /documents/{logical_document_id}`, and
+`GET /documents/{logical_document_id}/versions` are implemented so far. The
+remaining approved routes (retry, version deletion, logical-document
+deletion) are intentionally not implemented yet.
 """
 
 import tempfile
@@ -177,8 +177,7 @@ async def get_document(
     """Return one logical document: its identity plus its current version.
 
     Same response shape as one item from GET /documents. Does not return
-    version history -- that is GET /documents/{logical_document_id}/versions
-    (not yet implemented).
+    version history -- that is GET /documents/{logical_document_id}/versions.
     """
 
     versions = await document_repository.get_by_logical_document_id(logical_document_id)
@@ -192,3 +191,31 @@ async def get_document(
     current_version = await document_repository.get_current_version(logical_document_id)
 
     return LogicalDocumentResponse.from_current_version(logical_document_id, current_version)
+
+
+@router.get(
+    "/{logical_document_id}/versions",
+    response_model=list[DocumentVersionResponse],
+)
+async def list_document_versions(
+    logical_document_id: UUID,
+    document_repository: Annotated[
+        DocumentRepository,
+        Depends(get_document_repository),
+    ],
+) -> list[DocumentVersionResponse]:
+    """Return every version of one logical document, newest first.
+
+    Includes every lifecycle status (READY, FAILED, PROCESSING, UPLOADED) --
+    not filtered to current or READY versions.
+    """
+
+    versions = await document_repository.get_by_logical_document_id(logical_document_id)
+
+    if not versions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document not found: {logical_document_id}",
+        )
+
+    return [DocumentVersionResponse.model_validate(version) for version in versions]

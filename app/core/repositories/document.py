@@ -251,10 +251,14 @@ class DocumentRepository:
         self,
         logical_document_id: UUID,
     ) -> list[Document]:
+        """Return every version of a logical document, newest first."""
+
         result = await self.session.execute(
-            select(Document).where(
+            select(Document)
+            .where(
                 Document.logical_document_id == logical_document_id,
             )
+            .order_by(Document.version_number.desc())
         )
 
         return list(result.scalars().all())
