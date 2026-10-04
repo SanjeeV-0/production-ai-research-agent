@@ -10,22 +10,29 @@ const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || '';
  * This module is the single boundary between the UI and the backend's
  * document-management HTTP API.
  *
- * IMPORTANT: As of now, the FastAPI backend does not mount any HTTP routes
- * for document management (`app/main.py` only registers `/research` and
- * `/retrieval`). The endpoints called below (`/documents`, ...) describe the
- * INTENDED contract for that future API — they are not guaranteed to exist.
+ * The backend implements GET /documents, GET /documents/{id}, and
+ * GET /documents/{id}/versions, each returning the shapes declared in
+ * `../types/document` (`LogicalDocumentSummary` = logical_document_id +
+ * nullable current_version; `DocumentVersion` = one version's lifecycle
+ * fields).
  *
- * Every function here surfaces that gap explicitly via
- * `DocumentApiUnavailableError` instead of silently falling back to mock or
- * cached data. Callers must handle that case and tell the user the backend
- * API isn't exposed yet rather than pretending an action succeeded.
+ * Every function here still surfaces a 404 as `DocumentApiUnavailableError`
+ * instead of silently falling back to mock or cached data, in case a given
+ * route genuinely isn't exposed. Callers must handle that case and tell the
+ * user the action couldn't be performed rather than pretending it succeeded.
  */
 
 /**
- * Thrown when a document-management request reaches the server but matches
- * no route (HTTP 404), meaning the endpoint is not currently exposed by the
- * backend. Distinct from a network failure (server unreachable) and from a
- * real application error (e.g. 400/422/500 from an endpoint that exists).
+ * Thrown only when a request reaches the server but matches NO route at
+ * all (HTTP 404 with FastAPI/Starlette's generic `{"detail": "Not Found"}`
+ * body), meaning the endpoint genuinely is not registered by the backend.
+ *
+ * This is distinct from an application-level 404 raised by a route that
+ * DOES exist (e.g. "Document not found: <id>", "Document version not
+ * found: <id>") -- those are normal action errors, not evidence that the
+ * API is unexposed, and must not be reported as such. It is also distinct
+ * from a network failure (server unreachable) and from a real application
+ * error (400/409/422/500 from an endpoint that exists).
  */
 export class DocumentApiUnavailableError extends Error {
   constructor(
@@ -37,24 +44,30 @@ export class DocumentApiUnavailableError extends Error {
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
-  if (response.status === 404) {
-    throw new DocumentApiUnavailableError();
-  }
-
   if (!response.ok) {
-    let errorMessage = `HTTP ${response.status} (${response.statusText})`;
+    let detail: string | undefined;
     try {
       const errorData = await response.json();
-      if (errorData?.detail) {
-        errorMessage =
-          typeof errorData.detail === 'string'
-            ? errorData.detail
-            : JSON.stringify(errorData.detail);
+      if (typeof errorData?.detail === 'string') {
+        detail = errorData.detail;
+      } else if (errorData?.detail) {
+        detail = JSON.stringify(errorData.detail);
       }
     } catch {
-      // Fall back to status text
+      // No JSON body to read.
     }
-    throw new Error(errorMessage);
+
+    // FastAPI/Starlette's hardcoded body when no route matches the
+    // method+path at all is exactly `{"detail": "Not Found"}`. Every
+    // application-level 404 raised by our own route handlers uses a more
+    // specific detail message (e.g. "Document not found: <id>"), so this
+    // literal match reliably distinguishes "route not exposed" from "this
+    // particular resource wasn't found".
+    if (response.status === 404 && (detail === undefined || detail === 'Not Found')) {
+      throw new DocumentApiUnavailableError();
+    }
+
+    throw new Error(detail || `HTTP ${response.status} (${response.statusText})`);
   }
 
   if (response.status === 204) {
@@ -96,8 +109,8 @@ export async function listDocuments(): Promise<LogicalDocumentSummary[]> {
 }
 
 /**
- * Fetches a single logical document and its versions.
- * Intended backend route: GET /documents/{logicalId}
+ * Fetches a single logical document (identity + current version only).
+ * Backend route: GET /documents/{logicalId}
  */
 export async function getDocument(
   logicalId: string
@@ -108,6 +121,24 @@ export async function getDocument(
       headers: { Accept: 'application/json' },
     });
     return await handleResponse<LogicalDocumentSummary>(response);
+  } catch (error) {
+    return wrapError(error);
+  }
+}
+
+/**
+ * Fetches the full version history for a logical document, newest first.
+ * Backend route: GET /documents/{logicalId}/versions
+ */
+export async function getDocumentVersions(
+  logicalId: string
+): Promise<DocumentVersion[]> {
+  try {
+    const response = await fetch(`${API_BASE}/documents/${logicalId}/versions`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    return await handleResponse<DocumentVersion[]>(response);
   } catch (error) {
     return wrapError(error);
   }
@@ -143,14 +174,15 @@ export async function uploadDocument(
 
 /**
  * Retries a FAILED document version.
- * Intended backend route: POST /documents/versions/{versionId}/retry
+ * Backend route: POST /documents/{logicalId}/versions/{versionId}/retry
  */
 export async function retryDocumentVersion(
+  logicalId: string,
   versionId: string
 ): Promise<DocumentVersion> {
   try {
     const response = await fetch(
-      `${API_BASE}/documents/versions/${versionId}/retry`,
+      `${API_BASE}/documents/${logicalId}/versions/${versionId}/retry`,
       {
         method: 'POST',
         headers: { Accept: 'application/json' },
@@ -164,12 +196,15 @@ export async function retryDocumentVersion(
 
 /**
  * Deletes a single document version.
- * Intended backend route: DELETE /documents/versions/{versionId}
+ * Backend route: DELETE /documents/{logicalId}/versions/{versionId}
  */
-export async function deleteDocumentVersion(versionId: string): Promise<void> {
+export async function deleteDocumentVersion(
+  logicalId: string,
+  versionId: string
+): Promise<void> {
   try {
     const response = await fetch(
-      `${API_BASE}/documents/versions/${versionId}`,
+      `${API_BASE}/documents/${logicalId}/versions/${versionId}`,
       {
         method: 'DELETE',
         headers: { Accept: 'application/json' },

@@ -5,6 +5,7 @@ import {
 } from '../types/document';
 import {
   listDocuments,
+  getDocumentVersions,
   retryDocumentVersion,
   deleteDocumentVersion,
   deleteLogicalDocument,
@@ -58,6 +59,13 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   const [logicalDocToDelete, setLogicalDocToDelete] = useState<LogicalDocumentSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Version history for the currently selected document. GET /documents only
+  // returns each document's current version, so the full history behind the
+  // detail view is fetched separately from GET /documents/{id}/versions.
+  const [documentVersions, setDocumentVersions] = useState<DocumentVersion[]>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [versionsError, setVersionsError] = useState<string | null>(null);
+
   const loadDocuments = async () => {
     setIsLoading(true);
     setActionError(null);
@@ -87,20 +95,79 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     }
   }, [initialDocumentId]);
 
+  // A document can be selected either by its own logical_document_id, or by
+  // the id of its current version (e.g. when navigating here from a Research
+  // / Retrieval result, which only ever references current READY versions).
   const selectedDocument = documents.find(
     (d) =>
       d.logical_document_id === selectedDocId ||
-      d.versions.some((v) => v.id === selectedDocId)
+      d.current_version?.id === selectedDocId
   );
 
+  // Fetches (or re-fetches) version history for one logical document.
+  // Used by action handlers (retry/delete) to refresh the detail view's
+  // version list after a mutation, since the selected document's
+  // logical_document_id doesn't change and so wouldn't otherwise re-trigger
+  // the auto-load effect below.
+  const refreshDocumentVersions = async (logicalDocumentId: string) => {
+    setIsLoadingVersions(true);
+    setVersionsError(null);
+    try {
+      const versions = await getDocumentVersions(logicalDocumentId);
+      setDocumentVersions(versions);
+    } catch (err: any) {
+      if (err instanceof DocumentApiUnavailableError) {
+        setIsApiUnavailable(true);
+      }
+      setDocumentVersions([]);
+      setVersionsError(err?.message || 'Failed to load version history.');
+    } finally {
+      setIsLoadingVersions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedDocument) {
+      setDocumentVersions([]);
+      setVersionsError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadVersions = async () => {
+      setIsLoadingVersions(true);
+      setVersionsError(null);
+      try {
+        const versions = await getDocumentVersions(selectedDocument.logical_document_id);
+        if (!cancelled) setDocumentVersions(versions);
+      } catch (err: any) {
+        if (cancelled) return;
+        if (err instanceof DocumentApiUnavailableError) {
+          setIsApiUnavailable(true);
+        }
+        setDocumentVersions([]);
+        setVersionsError(err?.message || 'Failed to load version history.');
+      } finally {
+        if (!cancelled) setIsLoadingVersions(false);
+      }
+    };
+
+    loadVersions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDocument?.logical_document_id]);
+
   const filteredDocuments = documents.filter((doc) => {
+    const title = doc.current_version?.title ?? '';
     const matchesSearch =
-      doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.logical_document_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (doc.original_filename && doc.original_filename.toLowerCase().includes(searchQuery.toLowerCase()));
+      title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.logical_document_id.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus =
-      statusFilter === 'ALL' || doc.current_status === statusFilter;
+      statusFilter === 'ALL' || doc.current_version?.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
@@ -113,15 +180,16 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
   };
 
   // Handle Retry
-  const handleRetry = async (versionId: string) => {
+  const handleRetry = async (logicalDocumentId: string, versionId: string) => {
     setRetryingVersionId(versionId);
     setActionError(null);
     setActionSuccess(null);
 
     try {
-      const version = await retryDocumentVersion(versionId);
+      const version = await retryDocumentVersion(logicalDocumentId, versionId);
       setActionSuccess(`Version ${version.version_number} successfully reprocessed and is now READY (Current).`);
       await loadDocuments();
+      await refreshDocumentVersions(logicalDocumentId);
     } catch (err) {
       if (err instanceof DocumentApiUnavailableError) {
         setIsApiUnavailable(true);
@@ -138,11 +206,14 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     setIsDeleting(true);
     setActionError(null);
 
+    const logicalDocumentId = versionToDelete.doc.logical_document_id;
+
     try {
-      await deleteDocumentVersion(versionToDelete.version.id);
+      await deleteDocumentVersion(logicalDocumentId, versionToDelete.version.id);
       setActionSuccess(`Version ${versionToDelete.version.version_number} deleted.`);
       setVersionToDelete(null);
       await loadDocuments();
+      await refreshDocumentVersions(logicalDocumentId);
     } catch (err) {
       if (err instanceof DocumentApiUnavailableError) {
         setIsApiUnavailable(true);
@@ -161,7 +232,9 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
 
     try {
       await deleteLogicalDocument(logicalDocToDelete.logical_document_id);
-      setActionSuccess(`Logical document "${logicalDocToDelete.title}" and all its versions were removed.`);
+      setActionSuccess(
+        `Logical document "${logicalDocToDelete.current_version?.title ?? logicalDocToDelete.logical_document_id}" and all its versions were removed.`
+      );
       setLogicalDocToDelete(null);
       setSelectedDocId(null);
       await loadDocuments();
@@ -261,24 +334,26 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#f8fafc' }}>
-                    {selectedDocument.title}
+                    {selectedDocument.current_version?.title ?? 'Untitled Document'}
                   </h2>
-                  <StatusBadge status={selectedDocument.current_status} isCurrent={true} />
+                  {selectedDocument.current_version ? (
+                    <StatusBadge status={selectedDocument.current_version.status} isCurrent={true} />
+                  ) : (
+                    <span className="status-pill badge-status-uploaded">No current version</span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginTop: '0.6rem', color: '#94a3b8', fontSize: '0.8rem', flexWrap: 'wrap' }}>
                   <span>
-                    Type: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.document_type}</strong>
+                    Type: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.current_version?.document_type ?? 'Unknown'}</strong>
                   </span>
                   <span>
-                    Source: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.source || 'Standard Ingestion'}</strong>
+                    Source: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.current_version?.source || 'Standard Ingestion'}</strong>
                   </span>
-                  {selectedDocument.original_filename && (
-                    <span>
-                      File: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.original_filename}</strong>
-                    </span>
-                  )}
                   <span>
-                    Total Versions: <strong style={{ color: '#cbd5e1' }}>{selectedDocument.total_versions}</strong>
+                    Total Versions:{' '}
+                    <strong style={{ color: '#cbd5e1' }}>
+                      {isLoadingVersions ? '…' : documentVersions.length}
+                    </strong>
                   </span>
                 </div>
               </div>
@@ -308,7 +383,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
             <div style={{ marginTop: '1.25rem', padding: '0.85rem 1rem', background: 'rgba(15,23,42,0.6)', borderRadius: 8, fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: '#94a3b8' }}>
               <div>Logical Document ID: <span style={{ color: '#f8fafc' }}>{selectedDocument.logical_document_id}</span></div>
               <div style={{ marginTop: '0.2rem' }}>
-                Current Active Version ID: <span style={{ color: '#38bdf8' }}>{selectedDocument.current_version_id || 'None'}</span>
+                Current Active Version ID: <span style={{ color: '#38bdf8' }}>{selectedDocument.current_version?.id || 'None'}</span>
               </div>
             </div>
           </div>
@@ -322,8 +397,31 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
               </h3>
             </div>
 
+            {isLoadingVersions && (
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                <span className="spinner-ring" style={{ width: 16, height: 16, borderWidth: 2, marginRight: '0.5rem' }} />
+                Loading version history...
+              </div>
+            )}
+
+            {!isLoadingVersions && versionsError && (
+              <div className="error-banner" style={{ marginBottom: 0 }}>
+                <AlertTriangle size={18} color="#f43f5e" />
+                <div style={{ flex: 1 }}>
+                  <div className="error-title">Could Not Load Version History</div>
+                  <div className="error-desc">{versionsError}</div>
+                </div>
+              </div>
+            )}
+
+            {!isLoadingVersions && !versionsError && documentVersions.length === 0 && (
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                No versions found for this document.
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {selectedDocument.versions.map((version) => {
+              {!isLoadingVersions && !versionsError && documentVersions.map((version) => {
                 const isRetrying = retryingVersionId === version.id;
 
                 return (
@@ -363,9 +461,6 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
                           <div style={{ display: 'flex', gap: '1rem', marginTop: '0.35rem', fontSize: '0.72rem', color: '#94a3b8' }}>
                             <span>Attempt: {version.processing_attempt}</span>
                             <span>Created: {new Date(version.created_at).toLocaleString()}</span>
-                            {version.stored_file && (
-                              <span>File: {version.stored_file.original_filename} ({version.stored_file.size_bytes} bytes)</span>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -377,7 +472,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
                             type="button"
                             className="btn-primary"
                             style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', background: '#e11d48' }}
-                            onClick={() => handleRetry(version.id)}
+                            onClick={() => handleRetry(selectedDocument.logical_document_id, version.id)}
                             disabled={isRetrying}
                           >
                             {isRetrying ? (
@@ -424,7 +519,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
 
                     {/* Technical version metadata drawer */}
                     <div style={{ marginTop: '0.75rem', fontSize: '0.72rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
-                      Version ID: {version.id} | Content Hash: {version.content_hash.slice(0, 16)}...
+                      Version ID: {version.id}
                     </div>
                   </div>
                 );
@@ -527,7 +622,9 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
 
           {/* Document Cards Grid */}
           <div className="documents-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
-            {filteredDocuments.map((doc) => (
+            {filteredDocuments.map((doc) => {
+              const current = doc.current_version;
+              return (
               <div
                 key={doc.logical_document_id}
                 className="glass-card doc-card"
@@ -545,37 +642,46 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <FileText size={18} color="#06b6d4" />
                       <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
-                        {doc.document_type}
+                        {current?.document_type ?? 'Unknown type'}
                       </span>
                     </div>
-                    <StatusBadge status={doc.current_status} isCurrent={true} size="sm" />
+                    {current ? (
+                      <StatusBadge status={current.status} isCurrent={true} size="sm" />
+                    ) : (
+                      <span className="status-pill badge-status-uploaded status-pill-sm">No current version</span>
+                    )}
                   </div>
 
                   <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.5rem', lineHeight: '1.4' }}>
-                    {doc.title}
+                    {current?.title ?? 'Untitled document'}
                   </h3>
 
                   <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <div>Source: <span style={{ color: '#cbd5e1' }}>{doc.source || 'Local Ingestion'}</span></div>
-                    {doc.original_filename && (
-                      <div>File: <span style={{ color: '#cbd5e1' }}>{doc.original_filename}</span></div>
-                    )}
+                    <div>Source: <span style={{ color: '#cbd5e1' }}>{current?.source || 'Local Ingestion'}</span></div>
                   </div>
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>
                   <span>
-                    Version <strong>v{doc.current_version_number}</strong> ({doc.total_versions} total)
+                    {current ? <>Current <strong>v{current.version_number}</strong></> : 'No current version'}
                   </span>
                   <span style={{ color: '#818cf8', fontWeight: 600 }}>
                     Manage Versions &rarr;
                   </span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
-          {filteredDocuments.length === 0 && !isLoading && (
+          {isLoading && documents.length === 0 && (
+            <div className="glass-card empty-state" style={{ padding: '3rem' }}>
+              <span className="spinner-ring" style={{ width: 28, height: 28, borderWidth: 3, margin: '0 auto 1rem auto', display: 'block' }} />
+              <p className="empty-title">Loading Document Library...</p>
+            </div>
+          )}
+
+          {!isLoading && filteredDocuments.length === 0 && (
             <div className="glass-card empty-state" style={{ padding: '3rem' }}>
               <FileText className="empty-icon" />
               <p className="empty-title">
@@ -597,7 +703,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
       <ConfirmModal
         isOpen={!!versionToDelete}
         title="Delete Document Version"
-        description={`Are you sure you want to delete version ${versionToDelete?.version.version_number} of "${versionToDelete?.doc.title}"?`}
+        description={`Are you sure you want to delete version ${versionToDelete?.version.version_number} of "${versionToDelete?.doc.current_version?.title ?? 'this document'}"?`}
         details={
           <div>
             <p><strong>Consequences:</strong></p>
@@ -622,12 +728,12 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
       <ConfirmModal
         isOpen={!!logicalDocToDelete}
         title="Delete Entire Logical Document"
-        description={`Are you sure you want to delete the entire logical document "${logicalDocToDelete?.title}"?`}
+        description={`Are you sure you want to delete the entire logical document "${logicalDocToDelete?.current_version?.title ?? 'this document'}"?`}
         details={
           <div style={{ color: '#fda4af' }}>
             <p><strong>CRITICAL WARNING:</strong></p>
             <ul style={{ paddingLeft: '1.25rem', marginTop: '0.35rem', lineHeight: '1.5' }}>
-              <li>All {logicalDocToDelete?.total_versions} version(s) of this document will be permanently removed.</li>
+              <li>All {documentVersions.length} version(s) of this document will be permanently removed.</li>
               <li>All extracted pages, sections, and vector embeddings in PostgreSQL + pgvector will be purged.</li>
               <li>All physical files stored in storage will be deleted.</li>
             </ul>
