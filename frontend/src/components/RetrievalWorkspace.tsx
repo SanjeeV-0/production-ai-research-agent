@@ -31,7 +31,7 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
   onSelectDocument,
   onViewTrace,
 }) => {
-  const [query, setQuery] = useState('retrieval augmented generation vectors');
+  const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(10);
   const [documentIdFilter, setDocumentIdFilter] = useState(initialDocumentId || '');
   const [sectionIdFilter, setSectionIdFilter] = useState('');

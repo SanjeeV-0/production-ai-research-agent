@@ -4,12 +4,16 @@ from uuid import UUID
 
 @dataclass
 class RetrievalTraceCandidate:
-    """Trace information for a retrieved candidate."""
+    """Trace information for a retrieved candidate.
+
+    `section_id`/`section_path` are `None` for a headingless document's
+    chunks -- see `app.retrieval.models.RetrievedChunk`.
+    """
 
     chunk_id: UUID
     document_id: UUID
-    section_id: UUID
-    section_path: str
+    section_id: UUID | None
+    section_path: str | None
     page_numbers: list[int]
     content: str
     distance: float

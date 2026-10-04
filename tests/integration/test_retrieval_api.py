@@ -34,8 +34,13 @@ from app.retrieval.trace import (
 class FakeRetrievalService:
     """Fake retrieval service for API contract tests."""
 
-    def __init__(self) -> None:
+    def __init__(self, headingless: bool = False) -> None:
         self.last_trace = None
+        # A headingless document's chunks have section_id (and therefore
+        # section_path) as NULL -- the outer-join retrieval fix keeps them
+        # retrievable rather than excluding them. `headingless=True` models
+        # exactly that shape so tests can exercise it without a real database.
+        self.headingless = headingless
 
     async def search(
         self,
@@ -52,8 +57,8 @@ class FakeRetrievalService:
         result = RetrievedChunk(
             document_id=uuid4(),
             chunk_id=uuid4(),
-            section_id=uuid4(),
-            section_path="Results",
+            section_id=None if self.headingless else uuid4(),
+            section_path=None if self.headingless else "Results",
             page_numbers=[1, 2],
             content=("Retrieval augmented generation combines retrieval with generation."),
             distance=0.15,
@@ -237,6 +242,194 @@ def test_retrieval_search_rejects_empty_query() -> None:
 
     finally:
         app.dependency_overrides.clear()
+
+
+def test_retrieval_search_returns_null_section_for_headingless_chunk() -> None:
+    """Regression test for the exact bug reported against the Vector
+    Retrieval Explorer: a chunk from a headingless document has
+    section_id/section_path as NULL (the outer-join retrieval fix keeps it
+    retrievable rather than excluding it). The response must serialize that
+    as JSON null, not raise a Pydantic validation error that FastAPI turns
+    into an HTTP 500."""
+
+    app.dependency_overrides[get_retrieval_service] = lambda: FakeRetrievalService(headingless=True)
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/retrieval/search",
+            json={"query": "co pilot", "limit": 2},
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+        assert len(body["results"]) == 1
+
+        result = body["results"][0]
+        assert result["section_id"] is None
+        assert result["section_path"] is None
+        assert result["content"] == (
+            "Retrieval augmented generation combines retrieval with generation."
+        )
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_retrieval_search_trace_mode_handles_headingless_chunk() -> None:
+    """The same null-section shape must also serialize correctly in trace
+    mode's candidates/context, which use a separate Pydantic response model
+    (RetrievalTraceCandidateResponse) with the identical bug potential."""
+
+    app.dependency_overrides[get_retrieval_service] = lambda: FakeRetrievalService(headingless=True)
+    app.dependency_overrides[get_app_settings] = lambda: Settings(trace_enabled=True)
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/retrieval/search",
+            json={"query": "co pilot", "limit": 1},
+        )
+
+        assert response.status_code == 200
+
+        trace = response.json()["trace"]
+        assert trace is not None
+        assert trace["candidates"][0]["section_id"] is None
+        assert trace["candidates"][0]["section_path"] is None
+        assert trace["context"]["sources"][0]["section_id"] is None
+        assert trace["context"]["sources"][0]["section_path"] is None
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_retrieval_search_empty_corpus_returns_empty_results() -> None:
+    """An empty corpus (or a query matching nothing) must return 200 with
+    an empty results list, not an error -- the development database is
+    intentionally left empty after each pytest session, and this must be a
+    normal, representable state, not a crash."""
+
+    class EmptyRetrievalService:
+        last_trace = None
+
+        async def search(self, **kwargs) -> list[RetrievedChunk]:
+            return []
+
+    app.dependency_overrides[get_retrieval_service] = lambda: EmptyRetrievalService()
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/retrieval/search",
+            json={"query": "co pilot", "limit": 5},
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+        assert body["results"] == []
+        assert body["trace"] is None
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_retrieval_search_real_database_headingless_chunk() -> None:
+    """Reproduces the reported bug end-to-end against the real database:
+    a READY, current document whose only chunk has no section (section_id
+    IS NULL -- e.g. a headingless document) must be retrievable through the
+    real HTTP API without an Internal Server Error. Uses the exact
+    user-reported query ("co pilot")."""
+
+    async with async_session_factory() as session:
+        document = Document(
+            title=f"Headingless API Retrieval Test {uuid4()}",
+            document_type="research_paper",
+            content_hash=f"headingless-test-{uuid4()}",
+            document_metadata={},
+            logical_document_id=uuid4(),
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+        )
+
+        session.add(document)
+        await session.flush()
+
+        page = DocumentPage(
+            document_id=document.id,
+            page_number=1,
+            content="Co-pilot assists with writing code alongside the developer.",
+        )
+
+        session.add(page)
+        await session.flush()
+
+        embedding_provider = get_embedding_provider()
+
+        content = "Co-pilot assists with writing code alongside the developer."
+
+        chunk = DocumentChunk(
+            document_id=document.id,
+            section_id=None,
+            chunk_index=0,
+            content=content,
+            chunk_metadata={},
+            embedding=embedding_provider.embed_text(content),
+        )
+
+        session.add(chunk)
+        await session.flush()
+
+        session.add(
+            ChunkPageMap(
+                chunk_id=chunk.id,
+                document_page_id=page.id,
+            )
+        )
+        await session.flush()
+
+        # Commit so the API's separate database session can see the test data.
+        await session.commit()
+
+        try:
+            transport = ASGITransport(app=app)
+
+            async with AsyncClient(
+                transport=transport,
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/retrieval/search",
+                    json={
+                        "query": "co pilot",
+                        "limit": 2,
+                        "document_id": str(document.id),
+                    },
+                )
+
+            assert response.status_code == 200
+
+            body = response.json()
+            assert len(body["results"]) == 1
+
+            result = body["results"][0]
+            assert result["content"] == content
+            assert result["section_id"] is None
+            assert result["section_path"] is None
+            assert result["page_numbers"] == [1]
+
+        finally:
+            app.dependency_overrides.clear()
+
+            await session.delete(document)
+            await session.commit()
 
 
 @pytest.mark.asyncio

@@ -13,12 +13,18 @@ class RetrievalSearchRequest(BaseModel):
 
 
 class RetrievedChunkResponse(BaseModel):
-    """API representation of a retrieved chunk."""
+    """API representation of a retrieved chunk.
+
+    `section_id`/`section_path` are nullable: a headingless document's
+    chunks have no section (the repository's outer join to DocumentSection
+    keeps them retrievable rather than excluding them), so this must accept
+    and serialize that as JSON null rather than rejecting the response.
+    """
 
     document_id: UUID
     chunk_id: UUID
-    section_id: UUID
-    section_path: str
+    section_id: UUID | None
+    section_path: str | None
     page_numbers: list[int]
     content: str
     distance: float
@@ -27,12 +33,16 @@ class RetrievedChunkResponse(BaseModel):
 
 
 class RetrievalTraceCandidateResponse(BaseModel):
-    """API representation of a traced retrieval candidate."""
+    """API representation of a traced retrieval candidate.
+
+    See `RetrievedChunkResponse` -- `section_id`/`section_path` are
+    nullable for the same headingless-document reason.
+    """
 
     document_id: UUID
     chunk_id: UUID
-    section_id: UUID
-    section_path: str
+    section_id: UUID | None
+    section_path: str | None
     page_numbers: list[int]
     content: str
     distance: float
