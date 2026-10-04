@@ -248,3 +248,80 @@ async def test_global_reranker_runs_once_with_original_query() -> None:
         first.chunk_id,
         second.chunk_id,
     }
+
+
+@pytest.mark.asyncio
+async def test_decomposed_retrieval_merges_candidates_and_reranks_globally() -> None:
+    first = _chunk("first", 0.2)
+    shared = _chunk("shared", 0.4)
+    better_shared = RetrievedChunk(
+        document_id=shared.document_id,
+        chunk_id=shared.chunk_id,
+        section_id=shared.section_id,
+        section_path=shared.section_path,
+        page_numbers=shared.page_numbers,
+        content=shared.content,
+        distance=0.1,
+    )
+    third = _chunk("third", 0.3)
+
+    repository = QueryRepository(
+        {
+            "query one": [first, shared],
+            "query two": [better_shared, third],
+        }
+    )
+
+    embedding_provider = QueryEmbeddingProvider()
+    reranker = FakeReranker()
+
+    service = RetrievalService(
+        repository=repository,
+        embedding_provider=embedding_provider,
+        reranker=reranker,
+        query_decomposer=FakeDecomposer(("query one", "query two")),
+    )
+
+    results = await service.search(
+        "original complex query",
+        limit=2,
+        candidate_limit=10,
+        trace=True,
+    )
+
+    # Each sub-query gets its own embedding and retrieval call.
+    assert embedding_provider.queries == [
+        "query one",
+        "query two",
+    ]
+    assert repository.calls == [
+        "query one",
+        "query two",
+    ]
+
+    # Both retrieval results are merged and duplicate chunks are removed.
+    assert len(reranker.calls) == 1
+
+    rerank_query, rerank_candidates = reranker.calls[0]
+
+    assert rerank_query == "original complex query"
+    assert len(rerank_candidates) == 3
+
+    shared_candidate = next(
+        chunk for chunk in rerank_candidates if chunk.chunk_id == shared.chunk_id
+    )
+    assert shared_candidate.distance == 0.1
+
+    # The single global reranker determines the final Top K.
+    assert len(results) == 2
+    assert results == list(reversed(rerank_candidates))[:2]
+
+    # Retrieval trace exposes the decomposition and candidate accounting.
+    assert service.last_trace is not None
+    assert service.last_trace.original_query == "original complex query"
+    assert service.last_trace.sub_queries == [
+        "query one",
+        "query two",
+    ]
+    assert service.last_trace.raw_candidate_count == 4
+    assert service.last_trace.deduplicated_candidate_count == 3
