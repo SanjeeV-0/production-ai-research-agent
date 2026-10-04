@@ -12,6 +12,7 @@ from app.core.services.document import DocumentService
 from app.embeddings.provider import EmbeddingProvider
 from app.ingestion.chunk_service import ChunkService
 from app.ingestion.loaders.base import DocumentLoader
+from app.ingestion.loaders.resolver import resolve_loader_for_filename
 from app.ingestion.schemas import DocumentInput
 from app.ingestion.section_builder import SectionBuilder
 from app.ingestion.section_service import SectionService
@@ -125,8 +126,17 @@ class IngestionService:
     async def retry_document(
         self,
         document_id: UUID,
-        loader: DocumentLoader,
+        loader: DocumentLoader | None = None,
     ) -> Document:
+        """Retry a FAILED document version, reusing its existing StoredFile
+        and physical file -- no new version or stored file is created.
+
+        `loader` is optional: when not supplied, it is resolved from the
+        existing StoredFile's `original_filename` (the same loader the
+        original upload would have used), since that filename is already
+        known to the service and does not need to come from the caller.
+        """
+
         document = await self.repository.get_by_id(document_id)
 
         if document is None:
@@ -139,6 +149,9 @@ class IngestionService:
 
         if stored_file is None:
             raise ValueError(f"No stored file found for document {document.id}.")
+
+        if loader is None:
+            loader = resolve_loader_for_filename(stored_file.original_filename)
 
         file_bytes = await self.file_storage.retrieve(stored_file.storage_key)
 

@@ -7,10 +7,11 @@ transitions) is performed by `app.ingestion.service.IngestionService`,
 reused unchanged.
 
 Only `POST /documents`, `GET /documents`,
-`GET /documents/{logical_document_id}`, and
-`GET /documents/{logical_document_id}/versions` are implemented so far. The
-remaining approved routes (retry, version deletion, logical-document
-deletion) are intentionally not implemented yet.
+`GET /documents/{logical_document_id}`,
+`GET /documents/{logical_document_id}/versions`, and
+`POST /documents/{logical_document_id}/versions/{version_id}/retry` are
+implemented so far. The remaining approved routes (version deletion,
+logical-document deletion) are intentionally not implemented yet.
 """
 
 import tempfile
@@ -24,8 +25,7 @@ from app.core.dependencies import get_document_repository, get_ingestion_service
 from app.core.models import Document
 from app.core.repositories.document import DocumentRepository
 from app.ingestion.loaders.base import DocumentLoader
-from app.ingestion.loaders.markdown import MarkdownLoader
-from app.ingestion.loaders.pdf import PDFLoader
+from app.ingestion.loaders.resolver import resolve_loader_for_filename
 from app.ingestion.schemas import DocumentVersionResponse, LogicalDocumentResponse
 from app.ingestion.service import IngestionService
 
@@ -34,28 +34,17 @@ router = APIRouter(
     tags=["documents"],
 )
 
-_LOADERS_BY_SUFFIX: dict[str, type[DocumentLoader]] = {
-    ".md": MarkdownLoader,
-    ".markdown": MarkdownLoader,
-    ".pdf": PDFLoader,
-}
-
 
 def _resolve_loader(filename: str) -> DocumentLoader:
-    """Pick the existing loader implementation for a file, by extension."""
+    """Pick the registered loader implementation for a file, by extension."""
 
-    suffix = Path(filename).suffix.lower()
-
-    loader_class = _LOADERS_BY_SUFFIX.get(suffix)
-
-    if loader_class is None:
-        supported = ", ".join(sorted(_LOADERS_BY_SUFFIX))
+    try:
+        return resolve_loader_for_filename(filename)
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Unsupported file type '{suffix or filename}'. Supported types: {supported}.",
-        )
-
-    return loader_class()
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
@@ -219,3 +208,62 @@ async def list_document_versions(
         )
 
     return [DocumentVersionResponse.model_validate(version) for version in versions]
+
+
+@router.post(
+    "/{logical_document_id}/versions/{version_id}/retry",
+    response_model=DocumentVersionResponse,
+)
+async def retry_document_version(
+    logical_document_id: UUID,
+    version_id: UUID,
+    ingestion_service: Annotated[
+        IngestionService,
+        Depends(get_ingestion_service),
+    ],
+    document_repository: Annotated[
+        DocumentRepository,
+        Depends(get_document_repository),
+    ],
+) -> DocumentVersionResponse:
+    """Retry a FAILED document version via the existing IngestionService
+    retry flow, reusing the same Document row, the same StoredFile, and the
+    same physical file -- no new version or stored file is created.
+
+    No request body is required: `version_id` already identifies the exact
+    attempt to retry, and the loader is resolved internally by
+    IngestionService from the existing StoredFile's filename.
+    """
+
+    version = await document_repository.get_by_id(version_id)
+
+    if version is None or version.logical_document_id != logical_document_id:
+        # Covers both "doesn't exist" and "belongs to a different logical
+        # document" with the same 404, rather than revealing it exists
+        # elsewhere.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document version not found: {version_id}",
+        )
+
+    try:
+        document = await ingestion_service.retry_document(version_id)
+    except Exception as exc:
+        failed_document = getattr(exc, "failed_document", None)
+
+        if failed_document is not None:
+            # A normal, trackable, retry-able processing failure -- the
+            # retried version is still reported, just as FAILED, exactly
+            # like a first-time ingestion failure in POST /documents.
+            document = failed_document
+        elif isinstance(exc, ValueError):
+            # IngestionService's own state guard: the targeted version is
+            # not FAILED (existence was already confirmed above).
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        else:
+            raise
+
+    return DocumentVersionResponse.model_validate(document)

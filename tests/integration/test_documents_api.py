@@ -179,7 +179,7 @@ class FakeIngestionService:
         assert self.next_document is not None, "Fake not configured with next_document"
         return self.next_document
 
-    async def retry_document(self, document_id: UUID, loader) -> Document:
+    async def retry_document(self, document_id: UUID, loader=None) -> Document:
         self.retry_calls.append(document_id)
         if self.raise_on_retry is not None:
             raise self.raise_on_retry
@@ -1188,6 +1188,160 @@ def test_retry_rejects_non_failed_document(client: TestClient) -> None:
 
     assert response.status_code == 409
     assert ingestion.retry_calls == [ready_version.id]
+
+
+def test_retry_rejects_processing_version(client: TestClient) -> None:
+    """A PROCESSING version is not FAILED either -- same 409 as READY."""
+
+    logical_document_id = uuid4()
+    processing_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.PROCESSING,
+        is_current=False,
+    )
+
+    ingestion = FakeIngestionService()
+    ingestion.raise_on_retry = ValueError("Only FAILED documents can be retried.")
+
+    override(get_document_repository, FakeDocumentRepository([processing_version]))
+    override(get_ingestion_service, ingestion)
+
+    response = client.post(
+        f"/documents/{logical_document_id}/versions/{processing_version.id}/retry"
+    )
+
+    assert response.status_code == 409
+    assert ingestion.retry_calls == [processing_version.id]
+
+
+def test_retry_processing_failure_returns_200_with_failed_status(client: TestClient) -> None:
+    """A retry that fails again during processing is reported like any other
+    processing failure: 200, same version id, status FAILED, last_error
+    populated -- not a 409/422/500. IngestionService persists the FAILED
+    state and attaches it to the exception as `.failed_document`, exactly
+    as it does for a first-time ingestion failure."""
+
+    logical_document_id = uuid4()
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.FAILED,
+        is_current=False,
+        last_error="Connection reset.",
+        processing_attempt=1,
+    )
+
+    failed_again = make_document(
+        document_id=failed_version.id,
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.FAILED,
+        is_current=False,
+        last_error="Connection reset again.",
+        processing_attempt=2,
+    )
+
+    retry_error = RuntimeError("Connection reset again.")
+    retry_error.failed_document = failed_again
+
+    ingestion = FakeIngestionService()
+    ingestion.raise_on_retry = retry_error
+
+    override(get_document_repository, FakeDocumentRepository([failed_version]))
+    override(get_ingestion_service, ingestion)
+
+    response = client.post(f"/documents/{logical_document_id}/versions/{failed_version.id}/retry")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert_version_response_shape(body)
+    assert body["id"] == str(failed_version.id)
+    assert body["status"] == "FAILED"
+    assert body["last_error"] == "Connection reset again."
+    assert body["processing_attempt"] == 2
+
+    assert ingestion.retry_calls == [failed_version.id]
+
+
+def test_retry_unknown_version_for_existing_logical_document_returns_404(
+    client: TestClient,
+) -> None:
+    """The logical document is real (has another version), but the specific
+    version_id requested does not exist at all."""
+
+    logical_document_id = uuid4()
+    other_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=1,
+        status=DocumentStatus.READY,
+    )
+
+    ingestion = FakeIngestionService()
+
+    override(get_document_repository, FakeDocumentRepository([other_version]))
+    override(get_ingestion_service, ingestion)
+
+    response = client.post(f"/documents/{logical_document_id}/versions/{uuid4()}/retry")
+
+    assert response.status_code == 404
+    assert ingestion.retry_calls == []
+
+
+def test_retry_response_shape_is_canonical(client: TestClient) -> None:
+    """Exact canonical DocumentVersionResponse shape; no SQLAlchemy
+    internals leak through."""
+
+    logical_document_id = uuid4()
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.FAILED,
+    )
+    ready_version = make_document(
+        document_id=failed_version.id,
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.READY,
+        is_current=True,
+    )
+
+    ingestion = FakeIngestionService()
+    ingestion.retry_result = ready_version
+
+    override(get_document_repository, FakeDocumentRepository([failed_version]))
+    override(get_ingestion_service, ingestion)
+
+    response = client.post(f"/documents/{logical_document_id}/versions/{failed_version.id}/retry")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert set(body.keys()) == EXPECTED_VERSION_FIELDS
+    assert FORBIDDEN_FIELDS.isdisjoint(body.keys())
+
+
+def test_retry_requires_no_request_body(client: TestClient) -> None:
+    """No upload body is required -- a bare POST with no data succeeds."""
+
+    logical_document_id = uuid4()
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.FAILED,
+    )
+    ready_version = make_document(
+        document_id=failed_version.id,
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.READY,
+        is_current=True,
+    )
+
+    ingestion = FakeIngestionService()
+    ingestion.retry_result = ready_version
+
+    override(get_document_repository, FakeDocumentRepository([failed_version]))
+    override(get_ingestion_service, ingestion)
+
+    # Deliberately no `data=`/`json=`/`files=` argument.
+    response = client.post(f"/documents/{logical_document_id}/versions/{failed_version.id}/retry")
+
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
