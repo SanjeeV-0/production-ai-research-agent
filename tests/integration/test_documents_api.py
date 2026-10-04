@@ -1472,6 +1472,8 @@ def test_delete_version_physical_file_failure_propagates(client: TestClient) -> 
 
 
 def test_delete_logical_document_succeeds(client: TestClient) -> None:
+    """A logical document with a single version can be deleted."""
+
     logical_document_id = uuid4()
     version = make_document(logical_document_id=logical_document_id)
 
@@ -1484,6 +1486,78 @@ def test_delete_logical_document_succeeds(client: TestClient) -> None:
 
     assert response.status_code == 204
     assert deletion_service.deleted_logical_documents == [logical_document_id]
+
+
+def test_delete_logical_document_with_multiple_versions_in_different_statuses_succeeds(
+    client: TestClient,
+) -> None:
+    """The route does not care how many versions exist or what status each
+    is in -- existence of the logical document is enough; the real removal
+    of every version regardless of status is covered by
+    DocumentDeletionService's own tests."""
+
+    logical_document_id = uuid4()
+    ready_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=1,
+        status=DocumentStatus.READY,
+        is_current=True,
+    )
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=2,
+        status=DocumentStatus.FAILED,
+        is_current=False,
+    )
+    processing_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=3,
+        status=DocumentStatus.PROCESSING,
+        is_current=False,
+    )
+
+    deletion_service = FakeDocumentDeletionService()
+
+    override(
+        get_document_repository,
+        FakeDocumentRepository([ready_version, failed_version, processing_version]),
+    )
+    override(get_document_deletion_service, deletion_service)
+
+    response = client.delete(f"/documents/{logical_document_id}")
+
+    assert response.status_code == 204
+    assert deletion_service.deleted_logical_documents == [logical_document_id]
+
+
+def test_delete_logical_document_response_has_no_body(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    version = make_document(logical_document_id=logical_document_id)
+
+    override(get_document_repository, FakeDocumentRepository([version]))
+    override(get_document_deletion_service, FakeDocumentDeletionService())
+
+    response = client.delete(f"/documents/{logical_document_id}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+def test_delete_logical_document_physical_file_failure_propagates(client: TestClient) -> None:
+    """Physical-file deletion failure must propagate rather than pretending
+    the deletion fully succeeded -- it must not be reported as 204."""
+
+    logical_document_id = uuid4()
+    version = make_document(logical_document_id=logical_document_id)
+
+    deletion_service = FakeDocumentDeletionService()
+    deletion_service.raise_on_delete_logical = RuntimeError("Could not delete physical file.")
+
+    override(get_document_repository, FakeDocumentRepository([version]))
+    override(get_document_deletion_service, deletion_service)
+
+    with pytest.raises(RuntimeError, match="Could not delete physical file."):
+        client.delete(f"/documents/{logical_document_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -1554,19 +1628,15 @@ def test_delete_unknown_version_returns_404(client: TestClient) -> None:
 
 
 def test_delete_unknown_logical_document_returns_404(client: TestClient) -> None:
-    logical_document_id = uuid4()
-
     deletion_service = FakeDocumentDeletionService()
-    deletion_service.raise_on_delete_logical = ValueError(
-        f"Logical document not found: {logical_document_id}"
-    )
 
     override(get_document_repository, FakeDocumentRepository([]))
     override(get_document_deletion_service, deletion_service)
 
-    response = client.delete(f"/documents/{logical_document_id}")
+    response = client.delete(f"/documents/{uuid4()}")
 
     assert response.status_code == 404
+    assert deletion_service.deleted_logical_documents == []
 
 
 # ---------------------------------------------------------------------------

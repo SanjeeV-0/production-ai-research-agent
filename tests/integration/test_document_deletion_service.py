@@ -14,7 +14,10 @@ from app.core.models import (
     DocumentStatus,
     StoredFile,
 )
+from app.core.repositories.document import DocumentRepository
 from app.core.services.document_deletion import DocumentDeletionService
+from app.embeddings.testing import DeterministicEmbeddingProvider
+from app.retrieval.service import RetrievalService
 from app.storage.interface import FileStorage
 
 
@@ -426,3 +429,250 @@ async def test_delete_logical_document_removes_rag_records(
         assert mapping_result.scalar_one_or_none() is None
 
         assert not file_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_logical_document_removes_versions_in_every_status(
+    tmp_path: Path,
+) -> None:
+    """The entire logical document is removed regardless of each version's
+    lifecycle status -- READY, FAILED, and PROCESSING versions are all
+    deleted together."""
+
+    storage = LocalTestStorage(tmp_path)
+
+    logical_document_id = uuid4()
+
+    async with async_session_factory() as session:
+        documents: list[Document] = []
+        stored_files: list[StoredFile] = []
+
+        for version_number, document_status in enumerate(
+            (DocumentStatus.READY, DocumentStatus.FAILED, DocumentStatus.PROCESSING),
+            start=1,
+        ):
+            document = Document(
+                title=f"Version {version_number} ({document_status})",
+                document_type="research_paper",
+                logical_document_id=logical_document_id,
+                content_hash=f"content-{uuid4()}",
+                version_number=version_number,
+                is_current=document_status == DocumentStatus.READY,
+                status=document_status,
+                document_metadata={},
+            )
+            session.add(document)
+            await session.flush()
+
+            storage_key = f"documents/{logical_document_id}/{document.id}/{uuid4()}"
+
+            file_content = f"version {version_number}".encode()
+            file_path = tmp_path / storage_key
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_bytes(file_content)
+
+            stored_file = StoredFile(
+                document_id=document.id,
+                original_filename=f"version-{version_number}.pdf",
+                content_hash=f"file-{uuid4()}",
+                size_bytes=len(file_content),
+                storage_key=storage_key,
+            )
+
+            session.add(stored_file)
+
+            documents.append(document)
+            stored_files.append(stored_file)
+
+        await session.commit()
+
+        document_ids = [document.id for document in documents]
+        storage_keys = [stored_file.storage_key for stored_file in stored_files]
+
+        service = DocumentDeletionService(
+            session=session,
+            file_storage=storage,
+        )
+
+        await service.delete_logical_document(logical_document_id)
+
+        for document_id in document_ids:
+            assert await session.get(Document, document_id) is None
+
+        for stored_file in stored_files:
+            assert await session.get(StoredFile, stored_file.id) is None
+
+        for storage_key in storage_keys:
+            assert not (tmp_path / storage_key).exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_logical_document_does_not_affect_another_logical_document(
+    tmp_path: Path,
+) -> None:
+    storage = LocalTestStorage(tmp_path)
+
+    deleted_logical_document_id = uuid4()
+    untouched_logical_document_id = uuid4()
+
+    async with async_session_factory() as session:
+        deleted_document = Document(
+            title="Deleted Document",
+            document_type="research_paper",
+            logical_document_id=deleted_logical_document_id,
+            content_hash=f"content-{uuid4()}",
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+        untouched_document = Document(
+            title="Untouched Document",
+            document_type="research_paper",
+            logical_document_id=untouched_logical_document_id,
+            content_hash=f"content-{uuid4()}",
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+
+        session.add_all([deleted_document, untouched_document])
+        await session.flush()
+
+        deleted_storage_key = (
+            f"documents/{deleted_logical_document_id}/{deleted_document.id}/{uuid4()}"
+        )
+        untouched_storage_key = (
+            f"documents/{untouched_logical_document_id}/{untouched_document.id}/{uuid4()}"
+        )
+
+        for storage_key in (deleted_storage_key, untouched_storage_key):
+            file_path = tmp_path / storage_key
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_bytes(b"content")
+
+        deleted_stored_file = StoredFile(
+            document_id=deleted_document.id,
+            original_filename="deleted.pdf",
+            content_hash=f"file-{uuid4()}",
+            size_bytes=7,
+            storage_key=deleted_storage_key,
+        )
+        untouched_stored_file = StoredFile(
+            document_id=untouched_document.id,
+            original_filename="untouched.pdf",
+            content_hash=f"file-{uuid4()}",
+            size_bytes=7,
+            storage_key=untouched_storage_key,
+        )
+
+        session.add_all([deleted_stored_file, untouched_stored_file])
+        await session.commit()
+
+        untouched_document_id = untouched_document.id
+        untouched_stored_file_id = untouched_stored_file.id
+
+        service = DocumentDeletionService(
+            session=session,
+            file_storage=storage,
+        )
+
+        await service.delete_logical_document(deleted_logical_document_id)
+
+        assert await session.get(Document, deleted_document.id) is None
+        assert await session.get(StoredFile, deleted_stored_file.id) is None
+        assert not (tmp_path / deleted_storage_key).exists()
+
+        # The other logical document is completely untouched.
+        assert await session.get(Document, untouched_document_id) is not None
+        assert await session.get(StoredFile, untouched_stored_file_id) is not None
+        assert (tmp_path / untouched_storage_key).exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_logical_document_chunks_are_not_retrievable_after_deletion(
+    tmp_path: Path,
+) -> None:
+    """Integration-level assertion using the existing retrieval path (not
+    just raw row counts): after deletion, no chunk from any version of the
+    logical document is returned by RetrievalService.search."""
+
+    storage = LocalTestStorage(tmp_path)
+    provider = DeterministicEmbeddingProvider(dimensions=384)
+
+    logical_document_id = uuid4()
+    searchable_content = f"retrieval augmented generation {uuid4()}"
+
+    async with async_session_factory() as session:
+        document = Document(
+            title="Searchable Document",
+            document_type="research_paper",
+            logical_document_id=logical_document_id,
+            content_hash=f"content-{uuid4()}",
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+            document_metadata={},
+        )
+        session.add(document)
+        await session.flush()
+
+        section = DocumentSection(
+            document_id=document.id,
+            title="Results",
+            section_path="Results",
+            section_level=1,
+            section_index=0,
+            section_metadata={},
+        )
+        session.add(section)
+        await session.flush()
+
+        chunk = DocumentChunk(
+            document_id=document.id,
+            section_id=section.id,
+            chunk_index=0,
+            content=searchable_content,
+            chunk_metadata={},
+            embedding=provider.embed_text(searchable_content),
+        )
+        session.add(chunk)
+        await session.flush()
+
+        storage_key = f"documents/{logical_document_id}/{document.id}/{uuid4()}"
+        file_path = tmp_path / storage_key
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_bytes(b"original file")
+
+        stored_file = StoredFile(
+            document_id=document.id,
+            original_filename="research.pdf",
+            content_hash=f"file-{uuid4()}",
+            size_bytes=13,
+            storage_key=storage_key,
+        )
+        session.add(stored_file)
+
+        await session.commit()
+
+        retrieval = RetrievalService(
+            repository=DocumentRepository(session),
+            embedding_provider=provider,
+        )
+
+        # Sanity check: the chunk is retrievable before deletion.
+        results_before = await retrieval.search(searchable_content, limit=5)
+        assert any(result.chunk_id == chunk.id for result in results_before)
+
+        service = DocumentDeletionService(
+            session=session,
+            file_storage=storage,
+        )
+
+        await service.delete_logical_document(logical_document_id)
+
+        # No chunk from this logical document is retrievable after deletion.
+        results_after = await retrieval.search(searchable_content, limit=5)
+        assert all(result.chunk_id != chunk.id for result in results_after)
+        assert all(result.document_id != document.id for result in results_after)

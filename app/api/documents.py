@@ -6,13 +6,12 @@ work (content-hash deduplication, versioning, chunking, embedding, status
 transitions) is performed by `app.ingestion.service.IngestionService`,
 reused unchanged.
 
-Only `POST /documents`, `GET /documents`,
-`GET /documents/{logical_document_id}`,
+Every approved route is implemented:
+`POST /documents`, `GET /documents`, `GET /documents/{logical_document_id}`,
 `GET /documents/{logical_document_id}/versions`,
-`POST /documents/{logical_document_id}/versions/{version_id}/retry`, and
-`DELETE /documents/{logical_document_id}/versions/{version_id}` are
-implemented so far. `DELETE /documents/{logical_document_id}`
-(logical-document deletion) is intentionally not implemented yet.
+`POST /documents/{logical_document_id}/versions/{version_id}/retry`,
+`DELETE /documents/{logical_document_id}/versions/{version_id}`, and
+`DELETE /documents/{logical_document_id}`.
 """
 
 import tempfile
@@ -314,3 +313,39 @@ async def delete_document_version(
         )
 
     await document_deletion_service.delete_version(version_id)
+
+
+@router.delete(
+    "/{logical_document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_logical_document(
+    logical_document_id: UUID,
+    document_repository: Annotated[
+        DocumentRepository,
+        Depends(get_document_repository),
+    ],
+    document_deletion_service: Annotated[
+        DocumentDeletionService,
+        Depends(get_document_deletion_service),
+    ],
+) -> None:
+    """Delete an entire logical document -- every version, StoredFile,
+    page, section, chunk, embedding, and chunk-page mapping -- via the
+    existing DocumentDeletionService, regardless of each version's status.
+
+    Reuses its existing transaction/storage consistency semantics (DB
+    deletion commits before physical files are deleted; a physical-file
+    deletion failure propagates rather than claiming success). This
+    endpoint has no confirmation mechanism; that is a frontend concern.
+    """
+
+    versions = await document_repository.get_by_logical_document_id(logical_document_id)
+
+    if not versions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document not found: {logical_document_id}",
+        )
+
+    await document_deletion_service.delete_logical_document(logical_document_id)
