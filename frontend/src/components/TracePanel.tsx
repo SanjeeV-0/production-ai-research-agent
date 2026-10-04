@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TraceData, CandidateResult } from '../types/research';
-import { Terminal, ChevronDown, ChevronUp, Layers, CheckCircle, AlignLeft, Sparkles, Filter } from 'lucide-react';
+import { Terminal, ChevronDown, ChevronUp, Layers, CheckCircle, AlignLeft, Sparkles, Filter, GitBranch } from 'lucide-react';
 
 interface TracePanelProps {
   trace: TraceData;
@@ -33,15 +33,49 @@ export const TracePanel: React.FC<TracePanelProps> = ({ trace }) => {
         </div>
       </div>
 
-      {/* Summary Metrics Grid */}
-      <div className="trace-summary-grid">
-        <div className="trace-metric-card">
-          <div className="trace-metric-label">Query Requested</div>
-          <div style={{ fontSize: '0.9rem', color: '#cbd5e1', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={trace.query}>
-            "{trace.query}"
-          </div>
+      {/* Query Decomposition */}
+      <div className="trace-section" style={{ marginTop: 0 }}>
+        <div className="trace-section-title">
+          <GitBranch size={14} color="#818cf8" />
+          Query Decomposition
         </div>
 
+        <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.6rem' }}>
+          Original query: <span style={{ color: '#e2e8f0', fontWeight: 500 }}>"{trace.original_query}"</span>
+        </div>
+
+        {trace.sub_queries.length > 1 ? (
+          <>
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+              Decomposed into {trace.sub_queries.length} retrieval sub-queries, each run independently and merged into one candidate pool:
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+              {trace.sub_queries.map((subQuery, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    fontSize: '0.75rem',
+                    color: '#a5b4fc',
+                    background: 'rgba(99, 102, 241, 0.12)',
+                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                    padding: '0.25rem 0.6rem',
+                    borderRadius: 9999,
+                  }}
+                >
+                  {subQuery}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+            No decomposition occurred -- a single information need was detected, so retrieval ran against the original query only.
+          </div>
+        )}
+      </div>
+
+      {/* Summary Metrics Grid */}
+      <div className="trace-summary-grid">
         <div className="trace-metric-card">
           <div className="trace-metric-label">Candidate Limit</div>
           <div className="trace-metric-value" style={{ color: '#06b6d4' }}>
@@ -50,9 +84,16 @@ export const TracePanel: React.FC<TracePanelProps> = ({ trace }) => {
         </div>
 
         <div className="trace-metric-card">
-          <div className="trace-metric-label">Candidates Retrieved</div>
+          <div className="trace-metric-label">Raw Candidates</div>
           <div className="trace-metric-value" style={{ color: '#818cf8' }}>
-            {trace.candidates?.length || 0}
+            {trace.raw_candidate_count}
+          </div>
+        </div>
+
+        <div className="trace-metric-card">
+          <div className="trace-metric-label">Deduplicated Candidates</div>
+          <div className="trace-metric-value" style={{ color: '#a855f7' }}>
+            {trace.deduplicated_candidate_count}
           </div>
         </div>
 
@@ -192,7 +233,7 @@ export const TracePanel: React.FC<TracePanelProps> = ({ trace }) => {
                 <div key={idx} className="trace-chunk-accordion" style={{ padding: '0.85rem 1.2rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                     <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#a5b4fc', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <Sparkles size={12} /> [Source {idx + 1}] {src.section_path}
+                      <Sparkles size={12} /> [Source {idx + 1}] {src.section_path || 'Section Content'}
                     </span>
                     <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
                       Page {src.page_numbers?.join(', ')}

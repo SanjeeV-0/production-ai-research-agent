@@ -56,7 +56,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           #{index + 1}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="source-path" title={source.section_path}>
+          <div className="source-path" title={source.section_path ?? undefined}>
             {source.section_path || 'Section / Heading'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
@@ -111,7 +111,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
             <span className="source-detail-label">
               <Layers size={10} style={{ display: 'inline', marginRight: 2 }} /> Section Path
             </span>
-            <span className="source-detail-value" title={source.section_path}>
+            <span className="source-detail-value" title={source.section_path ?? undefined}>
               {source.section_path || 'Root Document'}
             </span>
           </div>
@@ -127,7 +127,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 
           <div className="source-detail-item">
             <span className="source-detail-label">
-              <FileText size={10} style={{ display: 'inline', marginRight: 2 }} /> Document ID
+              <FileText size={10} style={{ display: 'inline', marginRight: 2 }} /> Document Version ID
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <span className="source-detail-value" title={source.document_id}>

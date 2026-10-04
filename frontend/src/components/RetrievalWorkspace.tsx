@@ -18,6 +18,7 @@ import {
   Copy,
   Check,
   Cpu,
+  GitBranch,
 } from 'lucide-react';
 
 interface RetrievalWorkspaceProps {
@@ -258,6 +259,97 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
         </div>
       )}
 
+      {response && !response.trace && (
+        <div
+          className="warning-banner"
+          style={{ marginBottom: '1.5rem' }}
+        >
+          <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <div className="warning-title">Trace Not Available</div>
+            <div className="warning-desc">
+              The backend has trace capture disabled (<code>TRACE_ENABLED</code>), so query
+              decomposition, candidate-pool counts, and reranker provenance cannot be shown --
+              only the final retrieved chunks below.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Why these chunks: query decomposition + candidate pool summary.
+          This is the Retrieval Explorer's core purpose, so it is shown
+          inline rather than only behind the separate trace view. */}
+      {response?.trace && (
+        <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
+            <GitBranch size={15} color="#818cf8" />
+            <h3 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc' }}>
+              Query Decomposition
+            </h3>
+          </div>
+
+          <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+            Original query: <span style={{ color: '#e2e8f0', fontWeight: 500 }}>"{response.trace.original_query}"</span>
+          </div>
+
+          {response.trace.sub_queries.length > 1 ? (
+            <>
+              <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                Decomposed into <strong style={{ color: '#818cf8' }}>{response.trace.sub_queries.length}</strong> retrieval sub-queries, each run independently and merged:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
+                {response.trace.sub_queries.map((subQuery, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      fontSize: '0.75rem',
+                      color: '#a5b4fc',
+                      background: 'rgba(99, 102, 241, 0.12)',
+                      border: '1px solid rgba(99, 102, 241, 0.25)',
+                      padding: '0.25rem 0.6rem',
+                      borderRadius: 9999,
+                    }}
+                  >
+                    {subQuery}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '1rem' }}>
+              No decomposition occurred -- a single information need was detected, so retrieval ran against the original query only.
+            </div>
+          )}
+
+          <div className="advanced-filters-grid" style={{ marginBottom: 0 }}>
+            <div className="trace-metric-card" style={{ padding: '0.75rem 1rem' }}>
+              <div className="trace-metric-label">Candidate Limit</div>
+              <div className="trace-metric-value" style={{ fontSize: '1.05rem', color: '#06b6d4' }}>
+                {response.trace.candidate_limit}
+              </div>
+            </div>
+            <div className="trace-metric-card" style={{ padding: '0.75rem 1rem' }}>
+              <div className="trace-metric-label">Raw Candidates</div>
+              <div className="trace-metric-value" style={{ fontSize: '1.05rem', color: '#818cf8' }}>
+                {response.trace.raw_candidate_count}
+              </div>
+            </div>
+            <div className="trace-metric-card" style={{ padding: '0.75rem 1rem' }}>
+              <div className="trace-metric-label">Deduplicated Candidates</div>
+              <div className="trace-metric-value" style={{ fontSize: '1.05rem', color: '#a855f7' }}>
+                {response.trace.deduplicated_candidate_count}
+              </div>
+            </div>
+            <div className="trace-metric-card" style={{ padding: '0.75rem 1rem' }}>
+              <div className="trace-metric-label">Final Reranked Top K</div>
+              <div className="trace-metric-value" style={{ fontSize: '1.05rem', color: '#10b981' }}>
+                {response.trace.final_results.length}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Results list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {isLoading ? (
@@ -352,7 +444,7 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
                   <div className="source-details-drawer" style={{ marginTop: '0.85rem' }}>
                     <div className="source-detail-item">
                       <span className="source-detail-label">
-                        <FileText size={10} style={{ display: 'inline', marginRight: 2 }} /> Document ID
+                        <FileText size={10} style={{ display: 'inline', marginRight: 2 }} /> Document Version ID
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                         <span className="source-detail-value" title={chunk.document_id}>
@@ -392,7 +484,7 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
                       <span className="source-detail-label">
                         <Layers size={10} style={{ display: 'inline', marginRight: 2 }} /> Section ID
                       </span>
-                      <span className="source-detail-value" title={chunk.section_id}>
+                      <span className="source-detail-value" title={chunk.section_id ?? undefined}>
                         {chunk.section_id || 'N/A'}
                       </span>
                     </div>

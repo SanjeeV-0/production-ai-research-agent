@@ -14,7 +14,7 @@ export interface Source {
   document_id: string;
   chunk_id: string;
   section_id?: string | null;
-  section_path: string;
+  section_path: string | null;
   page_numbers: number[];
 }
 
@@ -22,7 +22,7 @@ export interface CandidateResult {
   document_id: string;
   chunk_id: string;
   section_id?: string | null;
-  section_path: string;
+  section_path: string | null;
   page_numbers: number[];
   content: string;
   distance: number;
@@ -33,7 +33,7 @@ export interface TraceContextSource {
   document_id: string;
   chunk_id: string;
   section_id?: string | null;
-  section_path: string;
+  section_path: string | null;
   page_numbers: number[];
   content: string;
   distance: number;
@@ -45,9 +45,25 @@ export interface TraceContext {
   sources: TraceContextSource[];
 }
 
+/**
+ * Debug trace for one retrieval operation. The retrieval pipeline always
+ * decomposes `original_query` into 1-5 `sub_queries` (deduplicated, the
+ * original query always included; decomposition only occurs for multiple
+ * distinct information needs -- a single-intent query simply yields
+ * `sub_queries == [original_query]`). Retrieval runs independently per
+ * sub-query, candidates are merged/deduplicated across all of them
+ * (`raw_candidate_count` before merge, `deduplicated_candidate_count`
+ * after), and exactly one global reranker pass picks the final Top K from
+ * the merged pool. The frontend only displays this -- it never re-derives
+ * or re-runs any of this logic itself.
+ */
 export interface TraceData {
   query: string;
+  original_query: string;
+  sub_queries: string[];
   candidate_limit: number;
+  raw_candidate_count: number;
+  deduplicated_candidate_count: number;
   candidates: CandidateResult[];
   final_results: CandidateResult[];
   context: TraceContext | null;
@@ -73,8 +89,8 @@ export interface RetrievalSearchRequest {
 export interface RetrievedChunkResponse {
   document_id: string;
   chunk_id: string;
-  section_id: string;
-  section_path: string;
+  section_id: string | null;
+  section_path: string | null;
   page_numbers: number[];
   content: string;
   distance: number;
