@@ -55,10 +55,12 @@ database, embedding model, or filesystem is touched.
 
 from __future__ import annotations
 
+import io
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
+from docx import Document as DocxDocument
 from fastapi.testclient import TestClient
 
 from app.core.models import Document, DocumentStatus
@@ -343,6 +345,21 @@ def upload_file(client: TestClient, **form_overrides):
     return client.post("/documents", data=data, files=files)
 
 
+def build_docx_bytes(paragraphs: list[str]) -> bytes:
+    """Build real, parseable .docx bytes in-memory via python-docx -- the
+    same "build a tiny real fixture with the format's own library"
+    convention already used for PDF loader tests, just assembled in memory
+    rather than written to a temp path since this is only ever POSTed."""
+
+    document = DocxDocument()
+    for paragraph in paragraphs:
+        document.add_paragraph(paragraph)
+
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # 1. Successful document upload
 # ---------------------------------------------------------------------------
@@ -381,6 +398,53 @@ def test_upload_document_returns_created_version(client: TestClient) -> None:
     # The client's actual uploaded filename must reach IngestionService,
     # not whatever temporary filesystem path the route used internally.
     assert ingestion.ingest_calls[0]["original_filename"] == "paper.md"
+
+
+def test_upload_accepts_docx_file_and_reaches_ready(client: TestClient) -> None:
+    """POST /documents accepts a real .docx upload, passes the client's
+    actual original filename through to IngestionService (not the route's
+    internal temp path), and reports successful ingestion as READY using
+    the existing fake-ingestion-service infrastructure -- the route itself
+    never touches the real ingestion/embedding pipeline in this test."""
+
+    ingestion = FakeIngestionService()
+    document = make_document(
+        title="Word Paper",
+        document_type="research_paper",
+        status=DocumentStatus.READY,
+        is_current=True,
+    )
+    ingestion.next_document = document
+
+    override(get_ingestion_service, ingestion)
+
+    docx_bytes = build_docx_bytes(
+        [
+            "Retrieval-Augmented Generation",
+            "RAG combines retrieval with generation.",
+        ]
+    )
+    files = {
+        "file": (
+            "paper.docx",
+            docx_bytes,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+    }
+    response = client.post(
+        "/documents",
+        data={"document_type": "research_paper", "title": "Word Paper"},
+        files=files,
+    )
+
+    assert response.status_code == 201
+
+    body = response.json()
+    assert_version_response_shape(body)
+    assert body["status"] == "READY"
+
+    assert len(ingestion.ingest_calls) == 1
+    assert ingestion.ingest_calls[0]["original_filename"] == "paper.docx"
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +548,35 @@ def test_upload_with_invalid_logical_document_id_is_rejected(client: TestClient)
     override(get_ingestion_service, ingestion)
 
     response = upload_file(client, logical_document_id="not-a-uuid")
+
+    assert response.status_code == 422
+    assert ingestion.ingest_calls == []
+
+
+def test_upload_with_unsupported_extension_is_rejected(client: TestClient) -> None:
+    """Loader resolution happens in the route before IngestionService is
+    ever called, so an unsupported extension is rejected the same way
+    regardless of which (fake or real) ingestion service is configured."""
+
+    ingestion = FakeIngestionService()
+    override(get_ingestion_service, ingestion)
+
+    files = {"file": ("paper.exe", b"not a real document", "application/octet-stream")}
+    response = client.post("/documents", data={"document_type": "research_paper"}, files=files)
+
+    assert response.status_code == 422
+    assert ingestion.ingest_calls == []
+
+
+def test_upload_with_legacy_doc_extension_is_rejected(client: TestClient) -> None:
+    """Legacy .doc (pre-2007 binary Word format) is intentionally
+    unsupported -- only modern .docx is accepted."""
+
+    ingestion = FakeIngestionService()
+    override(get_ingestion_service, ingestion)
+
+    files = {"file": ("paper.doc", b"not a real document", "application/msword")}
+    response = client.post("/documents", data={"document_type": "research_paper"}, files=files)
 
     assert response.status_code == 422
     assert ingestion.ingest_calls == []

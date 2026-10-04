@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.ingestion.loaders.base import DocumentLoader
+from app.ingestion.loaders.docx import DocxLoader
 from app.ingestion.loaders.markdown import MarkdownLoader
 from app.ingestion.loaders.pdf import PDFLoader
 
@@ -8,6 +9,7 @@ LOADERS_BY_SUFFIX: dict[str, type[DocumentLoader]] = {
     ".md": MarkdownLoader,
     ".markdown": MarkdownLoader,
     ".pdf": PDFLoader,
+    ".docx": DocxLoader,
 }
 
 
