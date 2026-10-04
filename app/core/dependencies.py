@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.settings import Settings, get_settings
 from app.core.database import get_db_session
 from app.core.repositories.document import DocumentRepository
+from app.core.services.document import DocumentService
 from app.core.services.document_deletion import DocumentDeletionService
 from app.embeddings.sentence_transformer import (
     SentenceTransformerEmbeddingProvider,
@@ -144,6 +145,17 @@ def get_document_repository(
     """Create a document repository for the current database session."""
 
     return DocumentRepository(session)
+
+
+def get_document_service(
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db_session),
+    ],
+) -> DocumentService:
+    """Create a document service for the current database session."""
+
+    return DocumentService(session)
 
 
 def get_document_deletion_service(

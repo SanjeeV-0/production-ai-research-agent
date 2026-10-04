@@ -9,6 +9,7 @@ import {
   retryDocumentVersion,
   deleteDocumentVersion,
   deleteLogicalDocument,
+  setCurrentVersion,
   DocumentApiUnavailableError,
 } from '../api/documents';
 import { StatusBadge } from './StatusBadge';
@@ -50,6 +51,9 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
 
   // Retry state
   const [retryingVersionId, setRetryingVersionId] = useState<string | null>(null);
+
+  // Set-current state
+  const [settingCurrentVersionId, setSettingCurrentVersionId] = useState<string | null>(null);
 
   // Deletion modals
   const [versionToDelete, setVersionToDelete] = useState<{
@@ -197,6 +201,27 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
       setActionError(describeError(err, 'Retry failed.'));
     } finally {
       setRetryingVersionId(null);
+    }
+  };
+
+  // Handle Make Current
+  const handleSetCurrent = async (logicalDocumentId: string, versionId: string) => {
+    setSettingCurrentVersionId(versionId);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const version = await setCurrentVersion(logicalDocumentId, versionId);
+      setActionSuccess(`Version ${version.version_number} is now the current version.`);
+      await loadDocuments();
+      await refreshDocumentVersions(logicalDocumentId);
+    } catch (err) {
+      if (err instanceof DocumentApiUnavailableError) {
+        setIsApiUnavailable(true);
+      }
+      setActionError(describeError(err, 'Failed to set version as current.'));
+    } finally {
+      setSettingCurrentVersionId(null);
     }
   };
 
@@ -423,6 +448,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {!isLoadingVersions && !versionsError && documentVersions.map((version) => {
                 const isRetrying = retryingVersionId === version.id;
+                const isSettingCurrent = settingCurrentVersionId === version.id;
 
                 return (
                   <div
@@ -467,6 +493,43 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
 
                       {/* Version Action buttons */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {version.is_current ? (
+                          <span
+                            style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: '#818cf8',
+                              padding: '0.35rem 0.75rem',
+                              border: '1px solid rgba(129,140,248,0.4)',
+                              borderRadius: 6,
+                            }}
+                          >
+                            Current
+                          </span>
+                        ) : version.status === 'READY' ? (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem' }}
+                            onClick={() =>
+                              handleSetCurrent(selectedDocument.logical_document_id, version.id)
+                            }
+                            disabled={isSettingCurrent}
+                          >
+                            {isSettingCurrent ? (
+                              <>
+                                <span className="spinner-ring" style={{ width: 12, height: 12, borderWidth: 2 }} />
+                                Setting...
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 size={13} />
+                                Make Current
+                              </>
+                            )}
+                          </button>
+                        ) : null}
+
                         {version.status === 'FAILED' && (
                           <button
                             type="button"
@@ -751,6 +814,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onUploaded={handleUploaded}
+        existingDocuments={documents}
       />
     </div>
   );

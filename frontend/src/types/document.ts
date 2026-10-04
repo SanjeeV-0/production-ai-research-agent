@@ -38,4 +38,7 @@ export interface UploadDocumentMetadata {
   title?: string;
   document_type?: string;
   source?: string;
+  // When set, the upload is ingested as a new version of this existing
+  // logical document instead of starting a brand new one.
+  logical_document_id?: string;
 }

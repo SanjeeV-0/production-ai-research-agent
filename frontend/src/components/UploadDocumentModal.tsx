@@ -1,12 +1,16 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud, X, AlertTriangle, FileText } from 'lucide-react';
 import { uploadDocument, DocumentApiUnavailableError } from '../api/documents';
-import { DocumentVersion } from '../types/document';
+import { DocumentVersion, LogicalDocumentSummary } from '../types/document';
 
 interface UploadDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUploaded: (version: DocumentVersion) => void;
+  // Existing logical documents, offered as targets for "upload as a new
+  // version of" an existing document. Keyed by logical_document_id, never
+  // by a version id.
+  existingDocuments: LogicalDocumentSummary[];
 }
 
 const DOCUMENT_TYPES = [
@@ -16,10 +20,13 @@ const DOCUMENT_TYPES = [
   { value: 'manual', label: 'Manual / Documentation' },
 ];
 
+type UploadMode = 'new' | 'new-version';
+
 export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   isOpen,
   onClose,
   onUploaded,
+  existingDocuments,
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -29,6 +36,8 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiUnavailable, setApiUnavailable] = useState(false);
+  const [uploadMode, setUploadMode] = useState<UploadMode>('new');
+  const [targetLogicalDocumentId, setTargetLogicalDocumentId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -41,6 +50,8 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     setError(null);
     setApiUnavailable(false);
     setIsUploading(false);
+    setUploadMode('new');
+    setTargetLogicalDocumentId('');
   };
 
   const handleClose = () => {
@@ -61,6 +72,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || isUploading) return;
+    if (uploadMode === 'new-version' && !targetLogicalDocumentId) return;
 
     setIsUploading(true);
     setError(null);
@@ -71,6 +83,8 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
         title: title.trim() || file.name,
         document_type: documentType,
         source: source.trim() || undefined,
+        logical_document_id:
+          uploadMode === 'new-version' ? targetLogicalDocumentId : undefined,
       });
       onUploaded(version);
       reset();
@@ -123,6 +137,79 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
               uploaded, chunked, embedded, and made available for retrieval
               once processing completes.
             </p>
+
+            {/* New document vs. new version of an existing document */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1rem' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.82rem',
+                  color: '#e2e8f0',
+                  cursor: isUploading ? 'default' : 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="upload-mode"
+                  checked={uploadMode === 'new'}
+                  disabled={isUploading}
+                  onChange={() => setUploadMode('new')}
+                />
+                Upload as new document
+              </label>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.82rem',
+                  color: '#e2e8f0',
+                  cursor: isUploading ? 'default' : 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="upload-mode"
+                  checked={uploadMode === 'new-version'}
+                  disabled={isUploading || existingDocuments.length === 0}
+                  onChange={() => setUploadMode('new-version')}
+                />
+                Upload as new version of:
+              </label>
+              {uploadMode === 'new-version' && (
+                <select
+                  value={targetLogicalDocumentId}
+                  onChange={(e) => setTargetLogicalDocumentId(e.target.value)}
+                  disabled={isUploading}
+                  style={{
+                    width: '100%',
+                    marginLeft: '1.6rem',
+                    background: 'rgba(15,23,42,0.8)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 6,
+                    color: '#f8fafc',
+                    padding: '0.5rem 0.75rem',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <option value="" disabled>
+                    Select an existing document...
+                  </option>
+                  {existingDocuments.map((doc) => (
+                    <option key={doc.logical_document_id} value={doc.logical_document_id}>
+                      {doc.current_version?.title ?? doc.logical_document_id}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {existingDocuments.length === 0 && uploadMode === 'new-version' && (
+                <span style={{ marginLeft: '1.6rem', fontSize: '0.75rem', color: '#94a3b8' }}>
+                  No existing documents available to version.
+                </span>
+              )}
+            </div>
 
             {/* Dropzone */}
             <div
@@ -272,7 +359,15 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             <button type="button" className="btn-secondary" onClick={handleClose} disabled={isUploading}>
               Cancel
             </button>
-            <button type="submit" className="btn-primary" disabled={!file || isUploading}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={
+                !file ||
+                isUploading ||
+                (uploadMode === 'new-version' && !targetLogicalDocumentId)
+              }
+            >
               {isUploading ? (
                 <>
                   <span className="spinner-ring" style={{ width: 14, height: 14, borderWidth: 2 }} />

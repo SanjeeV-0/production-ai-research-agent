@@ -159,6 +159,9 @@ export async function uploadDocument(
   if (metadata.source?.trim()) {
     formData.append('source', metadata.source.trim());
   }
+  if (metadata.logical_document_id) {
+    formData.append('logical_document_id', metadata.logical_document_id);
+  }
 
   try {
     const response = await fetch(`${API_BASE}/documents`, {
@@ -213,6 +216,28 @@ export async function deleteDocumentVersion(
     await handleResponse<void>(response);
   } catch (error) {
     wrapError(error);
+  }
+}
+
+/**
+ * Makes one version the current version of its logical document.
+ * Backend route: POST /documents/{logicalId}/versions/{versionId}/set-current
+ */
+export async function setCurrentVersion(
+  logicalId: string,
+  versionId: string
+): Promise<DocumentVersion> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/documents/${logicalId}/versions/${versionId}/set-current`,
+      {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+      }
+    );
+    return await handleResponse<DocumentVersion>(response);
+  } catch (error) {
+    return wrapError(error);
   }
 }
 

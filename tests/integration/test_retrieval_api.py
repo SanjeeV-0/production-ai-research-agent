@@ -20,6 +20,7 @@ from app.core.models import (
     DocumentSection,
     DocumentStatus,
 )
+from app.core.services.document import DocumentService
 from app.generation.context import GenerationContext
 from app.generation.service import GenerationResult
 from app.main import app
@@ -580,6 +581,120 @@ async def test_retrieval_search_real_database() -> None:
             app.dependency_overrides.clear()
 
             await session.delete(document)
+            await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_retrieval_switching_current_version_changes_results_without_deleting_vectors() -> (
+    None
+):
+    """Switching which version is current must change which version's
+    chunks retrieval returns, without deleting either version's chunks or
+    embeddings -- historical versions remain fully stored and retrievable
+    again if they are made current later."""
+
+    logical_document_id = uuid4()
+
+    async with async_session_factory() as session:
+        version_one = Document(
+            title="Versioned Retrieval Doc",
+            document_type="research_paper",
+            content_hash=f"switch-v1-{uuid4()}",
+            document_metadata={},
+            logical_document_id=logical_document_id,
+            version_number=1,
+            is_current=True,
+            status=DocumentStatus.READY,
+        )
+
+        version_two = Document(
+            title="Versioned Retrieval Doc",
+            document_type="research_paper",
+            content_hash=f"switch-v2-{uuid4()}",
+            document_metadata={},
+            logical_document_id=logical_document_id,
+            version_number=2,
+            is_current=False,
+            status=DocumentStatus.READY,
+        )
+
+        session.add_all([version_one, version_two])
+        await session.flush()
+
+        embedding_provider = get_embedding_provider()
+
+        shared_query = "Switching current versions must change retrieval results."
+        shared_embedding = embedding_provider.embed_text(shared_query)
+
+        chunk_one = DocumentChunk(
+            document_id=version_one.id,
+            section_id=None,
+            chunk_index=0,
+            content=f"{shared_query} (from version one)",
+            chunk_metadata={},
+            embedding=shared_embedding,
+        )
+
+        chunk_two = DocumentChunk(
+            document_id=version_two.id,
+            section_id=None,
+            chunk_index=0,
+            content=f"{shared_query} (from version two)",
+            chunk_metadata={},
+            embedding=shared_embedding,
+        )
+
+        session.add_all([chunk_one, chunk_two])
+        await session.commit()
+
+        try:
+            transport = ASGITransport(app=app)
+
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                first_response = await client.post(
+                    "/retrieval/search",
+                    json={"query": shared_query, "limit": 10},
+                )
+
+            assert first_response.status_code == 200
+            first_contents = [r["content"] for r in first_response.json()["results"]]
+            assert any("(from version one)" in content for content in first_contents)
+            assert all("(from version two)" not in content for content in first_contents)
+
+            # Switch current from v1 -> v2 via the existing DocumentService --
+            # no new version, no reprocessing, no chunk/vector mutation.
+            document_service = DocumentService(session)
+            await document_service.set_current(version_two)
+            await session.commit()
+
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                second_response = await client.post(
+                    "/retrieval/search",
+                    json={"query": shared_query, "limit": 10},
+                )
+
+            assert second_response.status_code == 200
+            second_contents = [r["content"] for r in second_response.json()["results"]]
+            assert any("(from version two)" in content for content in second_contents)
+            assert all("(from version one)" not in content for content in second_contents)
+
+            # Neither version's chunks/embeddings were deleted by switching
+            # current -- both remain fully stored regardless of which one is
+            # retrievable right now.
+            stored_chunk_one = await session.get(DocumentChunk, chunk_one.id)
+            stored_chunk_two = await session.get(DocumentChunk, chunk_two.id)
+
+            assert stored_chunk_one is not None
+            assert stored_chunk_one.embedding is not None
+            assert stored_chunk_two is not None
+            assert stored_chunk_two.embedding is not None
+
+        finally:
+            app.dependency_overrides.clear()
+
+            # Cascade deletes handle each version's chunks.
+            await session.delete(version_one)
+            await session.delete(version_two)
             await session.commit()
 
 

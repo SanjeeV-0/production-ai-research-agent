@@ -85,6 +85,7 @@ def _optional_dependency(name: str):
 get_ingestion_service = _optional_dependency("get_ingestion_service")
 get_document_repository = _optional_dependency("get_document_repository")
 get_document_deletion_service = _optional_dependency("get_document_deletion_service")
+get_document_service = _optional_dependency("get_document_service")
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +262,24 @@ class FakeDocumentDeletionService:
         if self.raise_on_delete_logical is not None:
             raise self.raise_on_delete_logical
         self.deleted_logical_documents.append(logical_document_id)
+
+
+class FakeDocumentService:
+    """Stands in for `app.core.services.document.DocumentService`.
+
+    Mirrors the one public method the set-current route uses (`set_current`).
+    """
+
+    def __init__(self) -> None:
+        self.set_current_calls: list[UUID] = []
+        self.result: Document | None = None
+        self.raise_on_set_current: Exception | None = None
+
+    async def set_current(self, document: Document) -> Document:
+        self.set_current_calls.append(document.id)
+        if self.raise_on_set_current is not None:
+            raise self.raise_on_set_current
+        return self.result if self.result is not None else document
 
 
 def override(dependency, fake) -> None:
@@ -1754,3 +1773,223 @@ def test_response_shape_exposes_only_the_explicit_contract(client: TestClient) -
     # (pages, chunks, sections, _sa_instance_state, raw metadata, ...)
     # leak through, and nothing from the explicit contract is missing.
     assert set(body.keys()) == EXPECTED_VERSION_FIELDS
+
+
+# ---------------------------------------------------------------------------
+# 15. Setting a version as current
+# ---------------------------------------------------------------------------
+
+
+def test_set_current_switches_to_the_targeted_version(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    current_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=1,
+        status=DocumentStatus.READY,
+        is_current=True,
+    )
+    target_version = make_document(
+        logical_document_id=logical_document_id,
+        version_number=2,
+        status=DocumentStatus.READY,
+        is_current=False,
+    )
+
+    promoted = make_document(
+        document_id=target_version.id,
+        logical_document_id=logical_document_id,
+        version_number=2,
+        status=DocumentStatus.READY,
+        is_current=True,
+    )
+
+    service = FakeDocumentService()
+    service.result = promoted
+
+    override(get_document_repository, FakeDocumentRepository([current_version, target_version]))
+    override(get_document_service, service)
+
+    response = client.post(
+        f"/documents/{logical_document_id}/versions/{target_version.id}/set-current"
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert_version_response_shape(body)
+    assert body["id"] == str(target_version.id)
+    assert body["is_current"] is True
+
+    assert service.set_current_calls == [target_version.id]
+
+
+def test_set_current_is_idempotent_when_already_current(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    current_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.READY,
+        is_current=True,
+    )
+
+    service = FakeDocumentService()
+
+    override(get_document_repository, FakeDocumentRepository([current_version]))
+    override(get_document_service, service)
+
+    response = client.post(
+        f"/documents/{logical_document_id}/versions/{current_version.id}/set-current"
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["id"] == str(current_version.id)
+    assert body["is_current"] is True
+
+    assert service.set_current_calls == [current_version.id]
+
+
+def test_set_current_rejects_failed_version(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.FAILED,
+        is_current=False,
+    )
+
+    service = FakeDocumentService()
+    service.raise_on_set_current = ValueError(
+        "Only READY versions can be made current (status is FAILED)."
+    )
+
+    override(get_document_repository, FakeDocumentRepository([failed_version]))
+    override(get_document_service, service)
+
+    response = client.post(
+        f"/documents/{logical_document_id}/versions/{failed_version.id}/set-current"
+    )
+
+    assert response.status_code == 409
+    assert service.set_current_calls == [failed_version.id]
+
+
+def test_set_current_rejects_processing_version(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    processing_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.PROCESSING,
+        is_current=False,
+    )
+
+    service = FakeDocumentService()
+    service.raise_on_set_current = ValueError(
+        "Only READY versions can be made current (status is PROCESSING)."
+    )
+
+    override(get_document_repository, FakeDocumentRepository([processing_version]))
+    override(get_document_service, service)
+
+    response = client.post(
+        f"/documents/{logical_document_id}/versions/{processing_version.id}/set-current"
+    )
+
+    assert response.status_code == 409
+    assert service.set_current_calls == [processing_version.id]
+
+
+def test_set_current_unknown_version_returns_404(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    other_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.READY,
+    )
+
+    service = FakeDocumentService()
+
+    override(get_document_repository, FakeDocumentRepository([other_version]))
+    override(get_document_service, service)
+
+    response = client.post(f"/documents/{logical_document_id}/versions/{uuid4()}/set-current")
+
+    assert response.status_code == 404
+    assert service.set_current_calls == []
+
+
+def test_set_current_unknown_logical_document_returns_404(client: TestClient) -> None:
+    service = FakeDocumentService()
+
+    override(get_document_repository, FakeDocumentRepository([]))
+    override(get_document_service, service)
+
+    response = client.post(f"/documents/{uuid4()}/versions/{uuid4()}/set-current")
+
+    assert response.status_code == 404
+    assert service.set_current_calls == []
+
+
+def test_set_current_version_mismatched_with_logical_document_returns_404(
+    client: TestClient,
+) -> None:
+    """version_id exists, but belongs to a different logical document --
+    this must not leak that the version exists elsewhere, nor let one
+    logical document's caller flip another's current version."""
+
+    version = make_document(logical_document_id=uuid4(), status=DocumentStatus.READY)
+
+    service = FakeDocumentService()
+
+    override(get_document_repository, FakeDocumentRepository([version]))
+    override(get_document_service, service)
+
+    other_logical_document_id = uuid4()
+    response = client.post(
+        f"/documents/{other_logical_document_id}/versions/{version.id}/set-current"
+    )
+
+    assert response.status_code == 404
+    assert service.set_current_calls == []
+
+
+def test_set_current_requires_no_request_body(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    target_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.READY,
+        is_current=False,
+    )
+
+    service = FakeDocumentService()
+
+    override(get_document_repository, FakeDocumentRepository([target_version]))
+    override(get_document_service, service)
+
+    # Deliberately no `data=`/`json=`/`files=` argument.
+    response = client.post(
+        f"/documents/{logical_document_id}/versions/{target_version.id}/set-current"
+    )
+
+    assert response.status_code == 200
+
+
+def test_set_current_response_shape_is_canonical(client: TestClient) -> None:
+    logical_document_id = uuid4()
+    target_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.READY,
+        is_current=False,
+    )
+
+    service = FakeDocumentService()
+
+    override(get_document_repository, FakeDocumentRepository([target_version]))
+    override(get_document_service, service)
+
+    response = client.post(
+        f"/documents/{logical_document_id}/versions/{target_version.id}/set-current"
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert set(body.keys()) == EXPECTED_VERSION_FIELDS
+    assert FORBIDDEN_FIELDS.isdisjoint(body.keys())

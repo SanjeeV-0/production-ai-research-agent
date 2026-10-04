@@ -13,6 +13,7 @@ class DocumentService:
     """Application-level operations for research documents."""
 
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.repository = DocumentRepository(session)
 
     async def ingest_document(
@@ -109,6 +110,42 @@ class DocumentService:
         document.last_error = error
 
         return await self.repository.update(document)
+
+    async def set_current(
+        self,
+        document: Document,
+    ) -> Document:
+        """Make `document` the current version of its logical document.
+
+        Only a READY version may become current (raises `ValueError`
+        otherwise -- the route maps this to 409). Already-current is a
+        no-op success (idempotent). Demoting the previous current version
+        (if any, and if different) and promoting this one happen as flushes
+        within the same transaction, committed together, so a failure
+        partway through leaves nothing committed and never two current
+        versions.
+        """
+
+        if document.status != DocumentStatus.READY:
+            raise ValueError(
+                f"Only READY versions can be made current (status is {document.status})."
+            )
+
+        if document.is_current:
+            return document
+
+        current_document = await self.repository.get_current_version(document.logical_document_id)
+
+        if current_document is not None and current_document.id != document.id:
+            current_document.is_current = False
+            await self.repository.update(current_document)
+
+        document.is_current = True
+        document = await self.repository.update(document)
+
+        await self.session.commit()
+
+        return document
 
     async def delete_version(
         self,

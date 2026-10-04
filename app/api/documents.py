@@ -10,6 +10,7 @@ Every approved route is implemented:
 `POST /documents`, `GET /documents`, `GET /documents/{logical_document_id}`,
 `GET /documents/{logical_document_id}/versions`,
 `POST /documents/{logical_document_id}/versions/{version_id}/retry`,
+`POST /documents/{logical_document_id}/versions/{version_id}/set-current`,
 `DELETE /documents/{logical_document_id}/versions/{version_id}`, and
 `DELETE /documents/{logical_document_id}`.
 """
@@ -24,10 +25,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from app.core.dependencies import (
     get_document_deletion_service,
     get_document_repository,
+    get_document_service,
     get_ingestion_service,
 )
 from app.core.models import Document
 from app.core.repositories.document import DocumentRepository
+from app.core.services.document import DocumentService
 from app.core.services.document_deletion import DocumentDeletionService
 from app.ingestion.loaders.base import DocumentLoader
 from app.ingestion.loaders.resolver import resolve_loader_for_filename
@@ -270,6 +273,54 @@ async def retry_document_version(
             ) from exc
         else:
             raise
+
+    return DocumentVersionResponse.model_validate(document)
+
+
+@router.post(
+    "/{logical_document_id}/versions/{version_id}/set-current",
+    response_model=DocumentVersionResponse,
+)
+async def set_current_document_version(
+    logical_document_id: UUID,
+    version_id: UUID,
+    document_repository: Annotated[
+        DocumentRepository,
+        Depends(get_document_repository),
+    ],
+    document_service: Annotated[
+        DocumentService,
+        Depends(get_document_service),
+    ],
+) -> DocumentVersionResponse:
+    """Make `version_id` the current version of its logical document.
+
+    No request body is required. Only a READY version may become current
+    (409 otherwise); an already-current READY version is a no-op success
+    (200, idempotent). No physical file operations, no vector/chunk
+    operations, no reprocessing, and no new version are involved -- this
+    only moves the `is_current` flag within a single DB transaction via the
+    existing DocumentService.
+    """
+
+    version = await document_repository.get_by_id(version_id)
+
+    if version is None or version.logical_document_id != logical_document_id:
+        # Covers both "doesn't exist" and "belongs to a different logical
+        # document" with the same 404, rather than revealing it exists
+        # elsewhere.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document version not found: {version_id}",
+        )
+
+    try:
+        document = await document_service.set_current(version)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
     return DocumentVersionResponse.model_validate(document)
 
