@@ -6,10 +6,11 @@ work (content-hash deduplication, versioning, chunking, embedding, status
 transitions) is performed by `app.ingestion.service.IngestionService`,
 reused unchanged.
 
-Only `POST /documents` and `GET /documents` are implemented so far. The
-remaining approved routes (GET /documents/{logical_document_id},
-GET /documents/{logical_document_id}/versions, retry, version deletion,
-logical-document deletion) are intentionally not implemented yet.
+Only `POST /documents`, `GET /documents`, and
+`GET /documents/{logical_document_id}` are implemented so far. The remaining
+approved routes (GET /documents/{logical_document_id}/versions, retry,
+version deletion, logical-document deletion) are intentionally not
+implemented yet.
 """
 
 import tempfile
@@ -160,3 +161,34 @@ async def list_documents(
         LogicalDocumentResponse.from_current_version(logical_document_id, current_version)
         for logical_document_id, current_version in logical_documents
     ]
+
+
+@router.get(
+    "/{logical_document_id}",
+    response_model=LogicalDocumentResponse,
+)
+async def get_document(
+    logical_document_id: UUID,
+    document_repository: Annotated[
+        DocumentRepository,
+        Depends(get_document_repository),
+    ],
+) -> LogicalDocumentResponse:
+    """Return one logical document: its identity plus its current version.
+
+    Same response shape as one item from GET /documents. Does not return
+    version history -- that is GET /documents/{logical_document_id}/versions
+    (not yet implemented).
+    """
+
+    versions = await document_repository.get_by_logical_document_id(logical_document_id)
+
+    if not versions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document not found: {logical_document_id}",
+        )
+
+    current_version = await document_repository.get_current_version(logical_document_id)
+
+    return LogicalDocumentResponse.from_current_version(logical_document_id, current_version)

@@ -772,8 +772,15 @@ def test_list_documents_current_version_uses_canonical_version_schema(
 
 
 def test_get_document_returns_current_version(client: TestClient) -> None:
+    """Same response shape as one item from GET /documents: a
+    logical_document_id plus its nested canonical current_version."""
+
     logical_document_id = uuid4()
-    document = make_document(logical_document_id=logical_document_id, is_current=True)
+    document = make_document(
+        logical_document_id=logical_document_id,
+        is_current=True,
+        status=DocumentStatus.READY,
+    )
 
     override(get_document_repository, FakeDocumentRepository([document]))
 
@@ -782,9 +789,103 @@ def test_get_document_returns_current_version(client: TestClient) -> None:
     assert response.status_code == 200
 
     body = response.json()
-    assert_version_response_shape(body)
-    assert body["id"] == str(document.id)
+    assert_logical_document_response_shape(body)
     assert body["logical_document_id"] == str(logical_document_id)
+    assert body["current_version"]["id"] == str(document.id)
+    assert body["current_version"]["status"] == "READY"
+    assert body["current_version"]["is_current"] is True
+
+
+def test_get_document_with_no_current_version_returns_null(client: TestClient) -> None:
+    """An existing logical document whose only version never became current
+    (e.g. still FAILED) returns 200 with current_version=None, rather than a
+    404 -- the logical document itself does exist."""
+
+    logical_document_id = uuid4()
+    failed_version = make_document(
+        logical_document_id=logical_document_id,
+        status=DocumentStatus.FAILED,
+        is_current=False,
+    )
+
+    override(get_document_repository, FakeDocumentRepository([failed_version]))
+
+    response = client.get(f"/documents/{logical_document_id}")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert_logical_document_response_shape(body)
+    assert body["logical_document_id"] == str(logical_document_id)
+    assert body["current_version"] is None
+
+
+def test_get_document_unknown_logical_document_id_returns_404(client: TestClient) -> None:
+    override(get_document_repository, FakeDocumentRepository([]))
+
+    response = client.get(f"/documents/{uuid4()}")
+
+    assert response.status_code == 404
+
+
+def test_get_document_failed_and_processing_versions_are_never_current(
+    client: TestClient,
+) -> None:
+    """A READY current version plus newer FAILED/PROCESSING attempts must
+    still report the READY one as current."""
+
+    logical_document_id = uuid4()
+    ready_current = make_document(
+        logical_document_id=logical_document_id,
+        version_number=1,
+        is_current=True,
+        status=DocumentStatus.READY,
+    )
+    failed_attempt = make_document(
+        logical_document_id=logical_document_id,
+        version_number=2,
+        is_current=False,
+        status=DocumentStatus.FAILED,
+    )
+    processing_attempt = make_document(
+        logical_document_id=logical_document_id,
+        version_number=3,
+        is_current=False,
+        status=DocumentStatus.PROCESSING,
+    )
+
+    override(
+        get_document_repository,
+        FakeDocumentRepository([ready_current, failed_attempt, processing_attempt]),
+    )
+
+    response = client.get(f"/documents/{logical_document_id}")
+
+    assert response.status_code == 200
+
+    current_version = response.json()["current_version"]
+    assert current_version["id"] == str(ready_current.id)
+    assert current_version["status"] == "READY"
+    assert current_version["is_current"] is True
+
+
+def test_get_document_response_shape_matches_list_item_exactly(client: TestClient) -> None:
+    """Exact response shape -- identical to one item from GET /documents --
+    and no SQLAlchemy internals leak through."""
+
+    logical_document_id = uuid4()
+    document = make_document(logical_document_id=logical_document_id)
+
+    override(get_document_repository, FakeDocumentRepository([document]))
+
+    response = client.get(f"/documents/{logical_document_id}")
+
+    assert response.status_code == 200
+
+    body = response.json()
+    assert set(body.keys()) == EXPECTED_LOGICAL_DOCUMENT_FIELDS
+    assert set(body["current_version"].keys()) == EXPECTED_VERSION_FIELDS
+    assert FORBIDDEN_FIELDS.isdisjoint(body["current_version"].keys())
 
 
 # ---------------------------------------------------------------------------
