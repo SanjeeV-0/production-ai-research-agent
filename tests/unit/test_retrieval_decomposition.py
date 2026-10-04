@@ -141,6 +141,59 @@ async def test_retrieval_runs_once_per_sub_query() -> None:
 
 
 @pytest.mark.asyncio
+async def test_decomposition_and_merge_happen_even_when_trace_is_disabled() -> None:
+    """Tracing is pure observability about a retrieval execution -- it must
+    never be a condition for that execution. With `trace=False` (the
+    default), decomposition must still run, retrieval must still run once
+    per sub-query, and candidates must still be merged/deduplicated and
+    globally reranked exactly as when tracing is on. Only trace *capture*
+    (`service.last_trace`) may be affected by the flag."""
+
+    first = _chunk("first", 0.2)
+    second = _chunk("second", 0.1)
+
+    repository = QueryRepository(
+        {
+            "query one": [first],
+            "query two": [second],
+        }
+    )
+    embedding_provider = QueryEmbeddingProvider()
+    decomposer = FakeDecomposer(("query one", "query two"))
+    reranker = FakeReranker()
+
+    service = RetrievalService(
+        repository=repository,
+        embedding_provider=embedding_provider,
+        reranker=reranker,
+        query_decomposer=decomposer,
+    )
+
+    results = await service.search(
+        "original complex query",
+        limit=2,
+        candidate_limit=5,
+        trace=False,
+    )
+
+    # Decomposition and per-sub-query retrieval both still ran.
+    assert embedding_provider.queries == ["query one", "query two"]
+    assert repository.calls == ["query one", "query two"]
+
+    # Candidates from both sub-queries were merged and globally reranked.
+    assert len(reranker.calls) == 1
+    _, reranked_candidates = reranker.calls[0]
+    assert {chunk.chunk_id for chunk in reranked_candidates} == {
+        first.chunk_id,
+        second.chunk_id,
+    }
+    assert len(results) == 2
+
+    # The only thing `trace=False` is allowed to affect: no trace captured.
+    assert service.last_trace is None
+
+
+@pytest.mark.asyncio
 async def test_duplicate_chunks_are_deduplicated_and_best_distance_is_kept() -> None:
     shared_chunk_id = uuid4()
 

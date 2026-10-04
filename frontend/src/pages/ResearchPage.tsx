@@ -169,6 +169,7 @@ export const ResearchPage: React.FC = () => {
           <RetrievalWorkspace
             initialDocumentId={targetDocId}
             onSelectDocument={handleNavigateToDoc}
+            traceEnabled={traceEnabled}
             onViewTrace={(trace) => {
               setActiveTraceData(trace);
               setActiveTab('trace');

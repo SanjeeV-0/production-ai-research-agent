@@ -55,14 +55,23 @@ async def search(
         Depends(get_app_settings),
     ],
 ) -> RetrievalSearchResponse:
-    """Search for relevant document chunks."""
+    """Search for relevant document chunks.
+
+    `Settings.trace_enabled` is a server-side capability ceiling, and
+    `request.trace` is the per-request ask -- trace is only captured when
+    both are true (`effective_trace`). This never gates retrieval or query
+    decomposition themselves, which always run: `effective_trace` only
+    controls whether `RetrievalService` records a trace of that execution.
+    """
+
+    effective_trace = request.trace and settings.trace_enabled
 
     results = await retrieval_service.search(
         query=request.query,
         limit=request.limit,
         document_id=request.document_id,
         section_id=request.section_id,
-        trace=settings.trace_enabled,
+        trace=effective_trace,
     )
 
     trace_response = None
@@ -90,6 +99,10 @@ async def search(
             context=context_response,
         )
 
+    trace_unavailable_reason = (
+        "server_disabled" if request.trace and not settings.trace_enabled else None
+    )
+
     return RetrievalSearchResponse(
         results=[
             RetrievedChunkResponse(
@@ -105,5 +118,8 @@ async def search(
             )
             for result in results
         ],
+        trace_requested=request.trace,
+        trace_available=trace_response is not None,
+        trace_unavailable_reason=trace_unavailable_reason,
         trace=trace_response,
     )

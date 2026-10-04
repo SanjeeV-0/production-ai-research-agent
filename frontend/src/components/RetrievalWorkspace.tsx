@@ -3,6 +3,7 @@ import {
   RetrievalSearchRequest,
   RetrievalSearchResponse,
   RetrievedChunkResponse,
+  TraceData,
 } from '../types/research';
 import { searchRetrievedChunks } from '../api/research';
 import {
@@ -19,18 +20,25 @@ import {
   Check,
   Cpu,
   GitBranch,
+  Terminal,
 } from 'lucide-react';
 
 interface RetrievalWorkspaceProps {
   initialDocumentId?: string | null;
   onSelectDocument?: (documentId: string) => void;
-  onViewTrace?: (trace: any) => void;
+  onViewTrace?: (trace: TraceData) => void;
+  // The header's global Trace Mode toggle. This is the single source of
+  // truth for whether this page's requests ask the backend for a trace --
+  // there is no separate, locally-duplicated toggle here, so the UI state
+  // and the request payload can never drift apart.
+  traceEnabled: boolean;
 }
 
 export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
   initialDocumentId,
   onSelectDocument,
   onViewTrace,
+  traceEnabled,
 }) => {
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(10);
@@ -54,6 +62,7 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
     const payload: RetrievalSearchRequest = {
       query: query.trim(),
       limit,
+      trace: traceEnabled,
     };
     if (documentIdFilter.trim()) {
       payload.document_id = documentIdFilter.trim();
@@ -66,7 +75,7 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
       const data = await searchRetrievedChunks(payload);
       setResponse(data);
 
-      if (data.trace && onViewTrace) {
+      if (data.trace_available && data.trace && onViewTrace) {
         onViewTrace(data.trace);
       }
     } catch (err: any) {
@@ -201,7 +210,26 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                color: traceEnabled ? '#818cf8' : '#64748b',
+                marginRight: 'auto',
+              }}
+              title={
+                traceEnabled
+                  ? 'Trace Mode is ON: this request asks the backend to capture a full retrieval trace (subject to server-side TRACE_ENABLED).'
+                  : 'Trace Mode is OFF: only final retrieved chunks will be returned, no trace.'
+              }
+            >
+              <Terminal size={12} />
+              Trace Mode {traceEnabled ? 'ON' : 'OFF'} for this request
+            </span>
             <button
               type="submit"
               className="btn-primary"
@@ -240,18 +268,18 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', padding: '0 0.5rem' }}>
           <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
             Found <strong style={{ color: '#f8fafc' }}>{response.results.length}</strong> matching chunks
-            {response.trace && (
+            {response.trace_available && response.trace && (
               <span style={{ marginLeft: '0.75rem', color: '#06b6d4' }}>
                 (from {response.trace.candidate_limit} pgvector candidates)
               </span>
             )}
           </div>
-          {response.trace && (
+          {response.trace_available && response.trace && (
             <button
               type="button"
               className="btn-secondary"
               style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
-              onClick={() => onViewTrace && onViewTrace(response.trace)}
+              onClick={() => onViewTrace && onViewTrace(response.trace!)}
             >
               <Cpu size={13} /> View Trace & Rerank Scores
             </button>
@@ -259,18 +287,19 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
         </div>
       )}
 
-      {response && !response.trace && (
-        <div
-          className="warning-banner"
-          style={{ marginBottom: '1.5rem' }}
-        >
+      {/* Trace Mode was ON for this request, but the server has tracing
+          disabled. Retrieval and query decomposition still ran normally --
+          only the trace representation of that execution is unavailable.
+          This must never be shown just because Trace Mode was OFF. */}
+      {response?.trace_requested && !response.trace_available && response.trace_unavailable_reason === 'server_disabled' && (
+        <div className="warning-banner" style={{ marginBottom: '1.5rem' }}>
           <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
-            <div className="warning-title">Trace Not Available</div>
+            <div className="warning-title">Trace Unavailable</div>
             <div className="warning-desc">
-              The backend has trace capture disabled (<code>TRACE_ENABLED</code>), so query
-              decomposition, candidate-pool counts, and reranker provenance cannot be shown --
-              only the final retrieved chunks below.
+              Trace Mode was requested, but backend trace capture is disabled
+              (<code>TRACE_ENABLED=false</code>). Retrieval and query decomposition are still
+              running normally. Only the final retrieved chunks are shown.
             </div>
           </div>
         </div>
@@ -279,7 +308,7 @@ export const RetrievalWorkspace: React.FC<RetrievalWorkspaceProps> = ({
       {/* Why these chunks: query decomposition + candidate pool summary.
           This is the Retrieval Explorer's core purpose, so it is shown
           inline rather than only behind the separate trace view. */}
-      {response?.trace && (
+      {response?.trace_available && response.trace && (
         <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
             <GitBranch size={15} color="#818cf8" />

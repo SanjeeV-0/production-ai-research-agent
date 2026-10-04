@@ -69,10 +69,23 @@ export interface TraceData {
   context: TraceContext | null;
 }
 
+/**
+ * Why trace data is or isn't present on a response. `TRACE_ENABLED` is a
+ * server-side capability ceiling; request-level `trace` is the per-request
+ * ask. The server only ever captures a trace when both are true
+ * (`request.trace AND settings.trace_enabled`) -- neither ever controls
+ * whether query decomposition or retrieval itself runs, only whether that
+ * execution's trace is recorded and returned.
+ */
+export type TraceUnavailableReason = 'server_disabled';
+
 export interface ResearchResponse {
   answer: string;
   model: string;
   sources: Source[];
+  trace_requested: boolean;
+  trace_available: boolean;
+  trace_unavailable_reason: TraceUnavailableReason | null;
   trace?: TraceData | null;
 }
 
@@ -84,6 +97,10 @@ export interface RetrievalSearchRequest {
   limit?: number; // 1 to 50, default 10
   document_id?: string | null;
   section_id?: string | null;
+  // Per-request ask for trace capture. Combined with the server's
+  // TRACE_ENABLED setting as request.trace AND settings.trace_enabled --
+  // see `RetrievalSearchResponse` for how the server reports the outcome.
+  trace?: boolean;
 }
 
 export interface RetrievedChunkResponse {
@@ -100,7 +117,10 @@ export interface RetrievedChunkResponse {
 
 export interface RetrievalSearchResponse {
   results: RetrievedChunkResponse[];
-  trace?: TraceData | null;
+  trace_requested: boolean;
+  trace_available: boolean;
+  trace_unavailable_reason: TraceUnavailableReason | null;
+  trace: TraceData | null;
 }
 
 /**

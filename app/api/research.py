@@ -3,7 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.config.settings import Settings
 from app.core.dependencies import (
+    get_app_settings,
     get_generation_service,
     get_retrieval_service,
 )
@@ -19,6 +21,12 @@ router = APIRouter(
 
 
 class ResearchRequest(BaseModel):
+    """`trace` is a per-request ask for trace capture -- combined with the
+    server-side `Settings.trace_enabled` capability ceiling as
+    `request.trace AND settings.trace_enabled` (see `ask` below), the same
+    rule `POST /retrieval/search` uses. It never affects whether query
+    decomposition or retrieval runs."""
+
     query: str = Field(min_length=1)
     trace: bool = False
 
@@ -34,11 +42,23 @@ async def ask(
         GenerationService,
         Depends(get_generation_service),
     ],
+    settings: Annotated[
+        Settings,
+        Depends(get_app_settings),
+    ],
 ) -> dict[str, object]:
-    """Answer a research question using retrieved context."""
+    """Answer a research question using retrieved context.
+
+    `Settings.trace_enabled` is a server-side capability ceiling, and
+    `request.trace` is the per-request ask -- trace is only captured when
+    both are true (`effective_trace`), following the same rule as
+    `POST /retrieval/search`. This never gates retrieval or query
+    decomposition themselves, which always run regardless of tracing.
+    """
 
     query = request.query
-    trace = request.trace
+    trace_requested = request.trace
+    effective_trace = trace_requested and settings.trace_enabled
     langfuse = get_langfuse()
 
     if langfuse is None:
@@ -46,7 +66,8 @@ async def ask(
             query=query,
             retrieval_service=retrieval_service,
             generation_service=generation_service,
-            trace=trace,
+            trace_requested=trace_requested,
+            effective_trace=effective_trace,
         )
 
     with langfuse.start_as_current_observation(
@@ -54,7 +75,7 @@ async def ask(
         name="research-request",
         input={
             "query": query,
-            "trace": trace,
+            "trace": trace_requested,
         },
     ) as observation:
         try:
@@ -62,7 +83,8 @@ async def ask(
                 query=query,
                 retrieval_service=retrieval_service,
                 generation_service=generation_service,
-                trace=trace,
+                trace_requested=trace_requested,
+                effective_trace=effective_trace,
             )
 
             observation.update(
@@ -87,14 +109,15 @@ async def _execute_research(
     query: str,
     retrieval_service: RetrievalService,
     generation_service: GenerationService,
-    trace: bool = False,
+    trace_requested: bool = False,
+    effective_trace: bool = False,
 ) -> dict[str, object]:
     """Execute retrieval, context assembly, and generation."""
 
     results = await retrieval_service.search(
         query=query,
         limit=10,
-        trace=trace,
+        trace=effective_trace,
     )
 
     context = ContextAssembler().assemble(results)
@@ -117,9 +140,16 @@ async def _execute_research(
             }
             for source in context.sources
         ],
+        "trace_requested": trace_requested,
+        "trace_available": False,
+        "trace_unavailable_reason": (
+            "server_disabled" if trace_requested and not effective_trace else None
+        ),
     }
 
-    if trace and retrieval_service.last_trace is not None:
+    if effective_trace and retrieval_service.last_trace is not None:
+        response["trace_available"] = True
+        response["trace_unavailable_reason"] = None
         response["trace"] = {
             "query": retrieval_service.last_trace.query,
             "original_query": retrieval_service.last_trace.original_query,

@@ -72,6 +72,7 @@ export async function searchRetrievedChunks(
   const payload: Record<string, unknown> = {
     query: params.query.trim(),
     limit: params.limit ?? 10,
+    trace: params.trace ?? false,
   };
 
   if (params.document_id) {

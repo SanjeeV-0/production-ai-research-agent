@@ -158,13 +158,85 @@ def test_retrieval_search_endpoint() -> None:
         assert result["rerank_score"] == 4.2
 
         assert body["trace"] is None
+        assert body["trace_requested"] is False
+        assert body["trace_available"] is False
+        assert body["trace_unavailable_reason"] is None
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_retrieval_search_trace_not_requested_even_when_server_enabled() -> None:
+    """Case 2: trace=false (explicit) + TRACE_ENABLED=true.
+
+    The per-request flag is the deciding factor when the server permits
+    tracing -- if the client didn't ask for it, no trace is captured, but
+    results are still returned normally (retrieval/decomposition unaffected)."""
+
+    app.dependency_overrides[get_retrieval_service] = lambda: FakeRetrievalService()
+    app.dependency_overrides[get_app_settings] = lambda: Settings(trace_enabled=True)
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/retrieval/search",
+            json={
+                "query": "retrieval augmented generation",
+                "limit": 2,
+                "trace": False,
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+        assert len(body["results"]) == 1
+        assert body["trace"] is None
+        assert body["trace_requested"] is False
+        assert body["trace_available"] is False
+        assert body["trace_unavailable_reason"] is None
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_retrieval_search_trace_requested_but_server_disabled() -> None:
+    """Case 3: trace=true + TRACE_ENABLED=false.
+
+    Results must still be returned (retrieval/decomposition still run) --
+    only trace capture is withheld, and the response says exactly why."""
+
+    app.dependency_overrides[get_retrieval_service] = lambda: FakeRetrievalService()
+    app.dependency_overrides[get_app_settings] = lambda: Settings(trace_enabled=False)
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/retrieval/search",
+            json={
+                "query": "retrieval augmented generation",
+                "limit": 2,
+                "trace": True,
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+        assert len(body["results"]) == 1
+        assert body["trace"] is None
+        assert body["trace_requested"] is True
+        assert body["trace_available"] is False
+        assert body["trace_unavailable_reason"] == "server_disabled"
 
     finally:
         app.dependency_overrides.clear()
 
 
 def test_retrieval_search_trace_mode() -> None:
-    """Test that trace mode exposes retrieval candidates and context."""
+    """Case 4: trace=true + TRACE_ENABLED=true -- full trace is returned."""
 
     retrieval_service = FakeRetrievalService()
 
@@ -184,6 +256,7 @@ def test_retrieval_search_trace_mode() -> None:
             json={
                 "query": "research query",
                 "limit": 1,
+                "trace": True,
             },
         )
 
@@ -193,6 +266,9 @@ def test_retrieval_search_trace_mode() -> None:
 
         assert "trace" in body
         assert body["trace"] is not None
+        assert body["trace_requested"] is True
+        assert body["trace_available"] is True
+        assert body["trace_unavailable_reason"] is None
 
         trace = body["trace"]
 
@@ -300,7 +376,7 @@ def test_retrieval_search_trace_mode_handles_headingless_chunk() -> None:
     try:
         response = client.post(
             "/retrieval/search",
-            json={"query": "co pilot", "limit": 1},
+            json={"query": "co pilot", "limit": 1, "trace": True},
         )
 
         assert response.status_code == 200
@@ -343,6 +419,9 @@ def test_retrieval_search_empty_corpus_returns_empty_results() -> None:
         body = response.json()
         assert body["results"] == []
         assert body["trace"] is None
+        assert body["trace_requested"] is False
+        assert body["trace_available"] is False
+        assert body["trace_unavailable_reason"] is None
 
     finally:
         app.dependency_overrides.clear()
@@ -740,19 +819,66 @@ def test_research_ask_endpoint() -> None:
         assert source["page_numbers"] == [1, 2]
 
         assert "trace" not in body
+        assert body["trace_requested"] is False
+        assert body["trace_available"] is False
+        assert body["trace_unavailable_reason"] is None
 
     finally:
         app.dependency_overrides.clear()
 
 
-def test_research_ask_trace_mode() -> None:
-    """Test that research trace mode exposes retrieval trace."""
+def test_research_ask_trace_requested_but_server_disabled() -> None:
+    """Case 3 for /research/ask: trace=true + TRACE_ENABLED=false.
+
+    The answer and sources must still be generated normally (retrieval and
+    decomposition still run) -- only trace capture is withheld, and the
+    response says exactly why, following the same rule as
+    POST /retrieval/search."""
 
     retrieval_service = FakeRetrievalService()
     generation_service = FakeGenerationService()
 
     app.dependency_overrides[get_retrieval_service] = lambda: retrieval_service
     app.dependency_overrides[get_generation_service] = lambda: generation_service
+    app.dependency_overrides[get_app_settings] = lambda: Settings(trace_enabled=False)
+
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/research/ask",
+            json={
+                "query": "What is retrieval augmented generation?",
+                "trace": True,
+            },
+        )
+
+        assert response.status_code == 200
+
+        body = response.json()
+
+        assert body["answer"] == ("RAG combines retrieval with language generation.")
+        assert len(body["sources"]) == 1
+
+        assert "trace" not in body
+        assert body["trace_requested"] is True
+        assert body["trace_available"] is False
+        assert body["trace_unavailable_reason"] == "server_disabled"
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_research_ask_trace_mode() -> None:
+    """Test that research trace mode exposes retrieval trace when the
+    server also has tracing enabled (trace=true + TRACE_ENABLED=true)."""
+
+    retrieval_service = FakeRetrievalService()
+    generation_service = FakeGenerationService()
+
+    app.dependency_overrides[get_retrieval_service] = lambda: retrieval_service
+    app.dependency_overrides[get_generation_service] = lambda: generation_service
+    app.dependency_overrides[get_app_settings] = lambda: Settings(trace_enabled=True)
 
     client = TestClient(app)
 
@@ -776,6 +902,9 @@ def test_research_ask_trace_mode() -> None:
 
         assert "trace" in body
         assert body["trace"] is not None
+        assert body["trace_requested"] is True
+        assert body["trace_available"] is True
+        assert body["trace_unavailable_reason"] is None
 
         trace = body["trace"]
 

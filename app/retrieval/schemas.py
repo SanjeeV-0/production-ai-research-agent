@@ -1,15 +1,24 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
 class RetrievalSearchRequest(BaseModel):
-    """Request payload for vector retrieval."""
+    """Request payload for vector retrieval.
+
+    `trace` is a per-request ask for trace capture -- it is always combined
+    with the server-side `Settings.trace_enabled` capability ceiling as
+    `request.trace AND settings.trace_enabled` (see `app.api.retrieval`).
+    Neither this flag nor the server setting ever affects whether query
+    decomposition or retrieval itself runs; tracing is observability only.
+    """
 
     query: str = Field(min_length=1)
     limit: int = Field(default=10, ge=1, le=50)
     document_id: UUID | None = None
     section_id: UUID | None = None
+    trace: bool = False
 
 
 class RetrievedChunkResponse(BaseModel):
@@ -71,7 +80,19 @@ class RetrievalTraceResponse(BaseModel):
 
 
 class RetrievalSearchResponse(BaseModel):
-    """Response payload for vector retrieval."""
+    """Response payload for vector retrieval.
+
+    `trace_requested`/`trace_available`/`trace_unavailable_reason` let the
+    caller distinguish "trace wasn't asked for" from "trace was asked for
+    but the server has tracing disabled" without inferring server capability
+    from `trace == null` alone. `trace_available` is true exactly when
+    `trace` is populated. `trace_unavailable_reason` is `"server_disabled"`
+    when trace was requested but `Settings.trace_enabled` is false, and
+    `None` otherwise (including when trace wasn't requested at all).
+    """
 
     results: list[RetrievedChunkResponse]
+    trace_requested: bool
+    trace_available: bool
+    trace_unavailable_reason: Literal["server_disabled"] | None = None
     trace: RetrievalTraceResponse | None = None
