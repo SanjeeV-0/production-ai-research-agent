@@ -7,7 +7,12 @@ from app.observability.langfuse import get_langfuse
 
 
 class GenerationService:
-    """Coordinates context and LLM generation."""
+    """Thin wrapper that adds optional Langfuse observability around a
+    `GenerationProvider` call. Contains no generation logic of its own --
+    when Langfuse is disabled (`get_langfuse() is None`), this reduces to a
+    direct passthrough to `provider.generate`, so observability can never
+    change generation behavior, only observe it.
+    """
 
     def __init__(
         self,

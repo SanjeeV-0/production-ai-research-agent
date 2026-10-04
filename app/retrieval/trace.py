@@ -1,3 +1,11 @@
+"""Internal (non-Pydantic) data shape for one retrieval execution's debug
+trace. Built by `app.retrieval.service.RetrievalService` only when
+`trace=True` is passed to `search()`/`_search()`; converted to the API
+response shape (`RetrievalTraceResponse` et al.) by `app.api.retrieval` and
+`app.api.research`. Kept separate from the Pydantic schemas so the service
+layer has no FastAPI/Pydantic dependency.
+"""
+
 from dataclasses import dataclass, field
 from uuid import UUID
 

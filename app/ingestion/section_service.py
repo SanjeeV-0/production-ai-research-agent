@@ -1,3 +1,9 @@
+"""Persists the `SectionNode`s built by `app.ingestion.section_builder` as
+`DocumentSection` rows and returns a `SectionMap` (path -> section id) so
+later pipeline steps (size_guard/chunk_service) can attach a `section_id` to
+each chunk.
+"""
+
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession

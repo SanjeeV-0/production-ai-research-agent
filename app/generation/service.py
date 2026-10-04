@@ -1,3 +1,8 @@
+"""Provider-agnostic generation contract. `app.generation.openrouter` is the
+only implementation; kept as a `Protocol` so `GenerationService`/tests don't
+depend on the OpenAI SDK directly.
+"""
+
 from dataclasses import dataclass
 from typing import Protocol
 

@@ -9,7 +9,18 @@ from app.storage.interface import FileStorage
 
 
 class DocumentDeletionService:
-    """Coordinate database and physical-file deletion."""
+    """Coordinate database and physical-file deletion.
+
+    Ordering invariant (both methods below): all DB deletes happen first and
+    are committed, and ONLY THEN are physical files deleted. This means a
+    failure before commit leaves both the DB and the filesystem untouched,
+    and a failure during physical deletion (after commit) leaves the DB
+    already consistent with at most an orphaned file on disk -- never a
+    dangling DB reference to a missing file. There is currently no
+    reconciliation job that cleans up such an orphaned file; that failure
+    mode is deliberately left to propagate as a real exception rather than
+    being swallowed.
+    """
 
     def __init__(
         self,

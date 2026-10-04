@@ -1,3 +1,10 @@
+/**
+ * API client for the Research & Synthesis (RAG) and Retrieval Explorer
+ * pages -- the only module allowed to call POST /research/ask and
+ * POST /retrieval/search. The frontend never re-implements decomposition,
+ * merging, or reranking itself; these two functions just forward the
+ * caller's request and return the backend's response verbatim.
+ */
 import {
   ResearchRequest,
   ResearchResponse,
@@ -64,7 +71,12 @@ export async function askResearchQuestion(
 }
 
 /**
- * Directly queries the vector retrieval endpoint POST /retrieval/search
+ * Directly queries the vector retrieval endpoint POST /retrieval/search.
+ *
+ * `params.trace` is sent as-is -- the caller (RetrievalWorkspace) is
+ * responsible for passing the actual Trace Mode toggle state here so the
+ * UI's displayed mode and the request it sends can never drift apart. The
+ * backend still applies its own `TRACE_ENABLED` ceiling on top of this.
  */
 export async function searchRetrievedChunks(
   params: RetrievalSearchRequest

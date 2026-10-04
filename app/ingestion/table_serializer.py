@@ -1,3 +1,9 @@
+"""NOT part of the active ingestion pipeline -- see
+`app.ingestion.structure_chunker` module docstring. Only reachable from
+`app.ingestion.table_chunker.split_table`. Covered by
+tests/unit/test_table_serializer.py.
+"""
+
 from app.ingestion.structure import TableData
 
 

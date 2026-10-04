@@ -16,7 +16,13 @@ from app.retrieval.models import RetrievedChunk
 
 
 class DocumentRepository:
-    """Database access operations for research documents."""
+    """All SQL for Document/StoredFile-adjacent/page/section/chunk data.
+
+    Owns every query in the application -- services (DocumentService,
+    IngestionService, DocumentDeletionService) and RetrievalService call
+    into this rather than building their own queries, so there is exactly
+    one place that knows the actual table/column shapes.
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -91,7 +97,23 @@ class DocumentRepository:
         document_id: UUID | None = None,
         section_id: UUID | None = None,
     ) -> list[RetrievedChunk]:
-        """Return chunks ranked by cosine distance."""
+        """Return chunks ranked by cosine distance.
+
+        This WHERE clause is the ONLY place "only the current, READY
+        version is searchable" is enforced -- it is a live query filter, not
+        a data-deletion rule. A non-current or non-READY version's chunks
+        and embeddings are never touched by this method; they simply don't
+        match this filter until/unless that version becomes current again
+        (see DocumentService.set_current). This is why switching current
+        versions is cheap (no re-embedding) and why historical versions stay
+        fully queryable the moment they're promoted back to current.
+
+        The join to DocumentSection is an OUTER join specifically so a chunk
+        with section_id IS NULL (a headingless document's chunk -- see
+        app.ingestion.structure_extractor) is still returned, with
+        section_path reported as NULL, rather than being silently excluded
+        by an inner join.
+        """
 
         distance = DocumentChunk.embedding.cosine_distance(query_embedding)
 

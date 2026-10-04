@@ -1,3 +1,17 @@
+/**
+ * Retrieval Explorer -- the engineering/debugging workbench for retrieval,
+ * deliberately NOT a second RAG answer UI (it only calls
+ * POST /retrieval/search, never /research/ask, so it never triggers
+ * generation). Its purpose is "show me why these chunks were retrieved":
+ * the original query, whether/how it was decomposed, raw vs. deduplicated
+ * candidate counts, and the final reranked results with full provenance.
+ *
+ * UI state is driven by the response's explicit `trace_requested` /
+ * `trace_available` / `trace_unavailable_reason` fields, never by
+ * `response.trace`'s truthiness alone -- this is what lets the component
+ * tell "Trace Mode was off" apart from "Trace Mode was on but the server
+ * has tracing disabled" and show the right message for each.
+ */
 import React, { useState } from 'react';
 import {
   RetrievalSearchRequest,

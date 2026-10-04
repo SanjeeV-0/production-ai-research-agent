@@ -24,7 +24,19 @@ class GenerationContext:
 
 
 class ContextAssembler:
-    """Assemble retrieved chunks into generation context."""
+    """Assemble retrieved chunks into generation context.
+
+    Pure and deterministic: no LLM call, no I/O. This is the explicit
+    boundary between "retrieval" (producing ranked `RetrievedChunk`s) and
+    "generation" (turning them into a prompt and calling an LLM) -- the
+    text/source format produced here is what both `RetrievalService`'s trace
+    `context` and `/research/ask`'s actual generation call consume.
+
+    Every real call site (`RetrievalService`, `app.api.research`) constructs
+    this with no `max_characters`, so there is currently no context-length
+    cap applied in practice -- `max_characters` exists but is unused by the
+    application today.
+    """
 
     def __init__(self, max_characters: int | None = None) -> None:
         if max_characters is not None and max_characters < 0:
@@ -36,7 +48,12 @@ class ContextAssembler:
         self,
         chunks: list[RetrievedChunk],
     ) -> GenerationContext:
-        """Build generation context from retrieved chunks."""
+        """Build generation context from retrieved chunks.
+
+        Chunks are included whole or not at all -- a chunk is never
+        truncated mid-text to fit `max_characters`; once adding the next
+        chunk would exceed the budget, assembly stops.
+        """
 
         text_parts: list[str] = []
         sources: list[GenerationContextSource] = []

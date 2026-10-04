@@ -1,3 +1,9 @@
+"""Turns the flat sequence of `section_path` strings on `StructuralUnit`s
+into a deduplicated, hierarchical list of `SectionNode`s (one per unique
+path, first-appearance order) -- pure, in-memory, no persistence. Persisting
+these as `DocumentSection` rows is `app.ingestion.section_service`'s job.
+"""
+
 from dataclasses import dataclass
 
 from app.ingestion.structure import StructuralUnit

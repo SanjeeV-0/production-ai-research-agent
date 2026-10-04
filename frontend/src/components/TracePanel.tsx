@@ -1,3 +1,15 @@
+/**
+ * Full-detail, read-only rendering of one `TraceData` payload -- shared by
+ * the Research & Synthesis page (inline, when trace is available) and the
+ * Retrieval Explorer's "View Trace & Rerank Scores" button. Renders exactly
+ * what the backend computed (decomposition, candidate pool, final reranked
+ * results, assembled context) and performs none of that logic itself.
+ *
+ * `trace.candidates` is the deduplicated pool BEFORE reranking (no
+ * `rerank_score`); `trace.final_results` is AFTER reranking (has
+ * `rerank_score`) -- this mirrors RetrievalService's own distinction, not a
+ * display quirk.
+ */
 import React, { useState } from 'react';
 import { TraceData, CandidateResult } from '../types/research';
 import { Terminal, ChevronDown, ChevronUp, Layers, CheckCircle, AlignLeft, Sparkles, Filter, GitBranch } from 'lucide-react';

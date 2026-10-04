@@ -1,3 +1,13 @@
+"""Final step before persistence in the active ingestion pipeline: converts
+`SemanticUnit`s into `ChildChunk`s (the shape `ChunkService.persist_chunks`
+embeds and stores), enforcing a maximum per-chunk token budget (passed in by
+the caller -- hard-coded to 500 in `IngestionService._process_document`).
+
+`estimate_tokens` is explicitly a whitespace-word-count approximation, not a
+real tokenizer -- documented here as a deliberate, deterministic,
+dependency-free placeholder rather than an oversight.
+"""
+
 import re
 from dataclasses import dataclass
 from uuid import UUID

@@ -6,12 +6,32 @@ from app.retrieval.decomposition import (
 
 
 class QueryDecomposer:
-    """Normalize and validate LLM-generated query decomposition."""
+    """Normalize and validate LLM-generated query decomposition.
+
+    This is the boundary between "whatever a QueryDecompositionProvider
+    returns" (untrusted: could be malformed JSON, too many queries,
+    duplicates, or a network/API failure) and "a safe, bounded list of
+    retrieval queries that RetrievalService can run directly". It owns the
+    original-query-preservation and failure-fallback invariants documented
+    below -- RetrievalService never has to handle a provider failure itself.
+    """
 
     def __init__(self, provider: QueryDecompositionProvider) -> None:
         self.provider = provider
 
     async def decompose(self, query: str) -> QueryDecompositionResult:
+        """Decompose `query`, never raising for provider-side failures.
+
+        Any exception from `self.provider.decompose` (network error,
+        malformed JSON, wrong response shape, non-string entries, ...) is
+        caught here and converted into a fallback result containing only the
+        original query -- retrieval must still be able to proceed with a
+        single-query search even if the decomposition LLM is unreachable or
+        misbehaves. Only an empty/whitespace-only `query` is a hard failure
+        (raises `ValueError`), since there is no sensible query to fall back
+        to in that case.
+        """
+
         original_query = query.strip()
 
         if not original_query:
@@ -42,6 +62,20 @@ class QueryDecomposer:
         original_query: str,
         candidates: list[str],
     ) -> list[str]:
+        """Build the final, bounded sub-query list.
+
+        Guarantees (relied on by RetrievalService and by
+        tests/unit/test_query_decomposer.py):
+          - the original query is always present, always first, and can
+            never be dropped by deduplication -- it is added before any
+            LLM-provided candidate is considered;
+          - blank/whitespace-only candidates are discarded;
+          - duplicates are removed case-insensitively (`.casefold()`), so
+            "What is RAG?" and "what is rag?" count as the same query;
+          - the result never exceeds MAX_SUB_QUERIES entries (including the
+            original), even if the provider returned more.
+        """
+
         queries: list[str] = []
         seen: set[str] = set()
 

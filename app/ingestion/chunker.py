@@ -1,3 +1,13 @@
+"""NOT part of the active ingestion pipeline.
+
+`IngestionService` (app.ingestion.service) uses StructureExtractor ->
+shred_semantically -> apply_size_guard instead. This simple overlapping-
+window chunker is only exercised by its own unit test
+(tests/unit/test_chunker.py) and is not imported by any production code
+path. Kept for reference / possible future use -- do not assume it runs
+against real uploads.
+"""
+
 from dataclasses import dataclass
 
 

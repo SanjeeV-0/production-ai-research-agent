@@ -1,3 +1,13 @@
+"""Groups adjacent prose structural units into `SemanticUnit`s using
+embedding-similarity boundaries, between `StructureExtractor` and
+`apply_size_guard` in the active ingestion pipeline (app.ingestion.service).
+
+This is LOCAL, adjacent-pair similarity, not global clustering: only
+consecutive prose units within the same section are compared, and the
+similarity threshold is passed in by the caller (hard-coded to 0.7 in
+IngestionService._process_document) rather than configured here.
+"""
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 

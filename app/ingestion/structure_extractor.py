@@ -1,3 +1,15 @@
+"""Turns loader-extracted page text into an ordered list of `StructuralUnit`s
+(HEADING/PARAGRAPH/LIST), the first step of the active ingestion pipeline
+(see app.ingestion.service). Regex-based, Markdown-heading-aware: it
+recognizes `#`-style headings and `-`/`*`/numbered list items, and tracks a
+heading stack to build each unit's hierarchical `section_path`.
+
+Note: this extractor never produces `UnitType.TABLE` units -- there is
+dedicated table-handling code elsewhere (`app.ingestion.table_chunker`,
+`table_serializer`) but it is not wired into this extractor or the active
+pipeline (see `docs/PROJECT_DOCUMENTATION.md` section 20).
+"""
+
 import re
 
 from app.ingestion.loaders.base import LoadedPage

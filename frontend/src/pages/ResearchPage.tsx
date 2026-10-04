@@ -1,3 +1,12 @@
+/**
+ * Top-level page and sole owner of cross-tab state: which tab is active,
+ * the global Trace Mode toggle (threaded into BOTH the Research tab's
+ * /research/ask calls and the Retrieval Explorer's /retrieval/search calls
+ * -- one toggle, two consumers, so its displayed state always matches what
+ * every request actually sends), the last research response, and
+ * `targetDocId` used for cross-tab navigation (e.g. "Inspect Doc" from a
+ * retrieval result jumps to the Document Library pre-selected on that doc).
+ */
 import React, { useState, useEffect } from 'react';
 import { Header, WorkspaceTab } from '../components/Header';
 import { ResearchInput } from '../components/ResearchInput';

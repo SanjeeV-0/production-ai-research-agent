@@ -1,3 +1,9 @@
+"""Final persistence step of the active ingestion pipeline: embeds and
+stores `ChildChunk`s (from `app.ingestion.size_guard`) as `DocumentChunk`
+rows, plus their `ChunkPageMap` provenance rows. The last ingestion step
+before `DocumentService.mark_ready` promotes the version to READY/current.
+"""
+
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession

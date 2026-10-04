@@ -1,3 +1,14 @@
+"""HTTP boundary for RAG question-answering: retrieval -> context assembly
+-> generation, orchestrated here but implemented entirely by
+`RetrievalService`, `ContextAssembler`, and `GenerationService` -- this
+module owns only the HTTP contract and the trace-availability metadata
+(same `effective_trace` rule as `app.api.retrieval`), never any retrieval,
+decomposition, or generation logic itself. Response is a plain
+`dict[str, object]` rather than a declared Pydantic `response_model`, kept
+that way to preserve exact backward-compatible key presence/absence
+(e.g. `"trace"` is omitted, not `null`, when unavailable).
+"""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends

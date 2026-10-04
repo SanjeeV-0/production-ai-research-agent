@@ -1,3 +1,10 @@
+"""The only `QueryDecompositionProvider` implementation: calls an LLM
+through OpenRouter's OpenAI-compatible API to split a query into focused
+retrieval sub-queries. Raw/malformed output is this provider's problem to
+raise on (ValueError/RuntimeError) -- validating and recovering from that is
+`app.retrieval.query_decomposer.QueryDecomposer`'s job, not this file's.
+"""
+
 import json
 
 from openai import AsyncOpenAI
@@ -24,10 +31,19 @@ class OpenRouterQueryDecompositionProvider:
         )
 
     async def decompose(self, query: str) -> list[str]:
-        """Ask the model to split a multi-intent query into focused queries."""
+        """Ask the model to split a multi-intent query into focused queries.
+
+        Raises `RuntimeError`/`ValueError` for an empty response or any
+        shape that doesn't match `{"queries": [str, ...]}` -- these are
+        caught by `QueryDecomposer.decompose`, which falls back to the
+        original query alone rather than propagating the failure.
+        """
 
         response = await self.client.chat.completions.create(
             model=self.model,
+            # Hard-coded (not a Settings field): decomposition should be
+            # deterministic given the same input, since it's a structural
+            # query-planning step, not a creative one.
             temperature=0,
             messages=[
                 {

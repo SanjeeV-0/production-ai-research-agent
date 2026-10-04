@@ -1,3 +1,9 @@
+"""All SQL for `StoredFile` rows (physical-file metadata). Kept separate
+from `DocumentRepository` since StoredFile has no `ON DELETE CASCADE` from
+Document (see app.core.models.StoredFile) -- callers that delete a Document
+must explicitly delete its StoredFile first via this repository.
+"""
+
 from uuid import UUID
 
 from sqlalchemy import select

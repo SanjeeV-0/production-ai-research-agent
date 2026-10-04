@@ -1,3 +1,15 @@
+"""The only `GenerationProvider` implementation: calls the answer-generation
+LLM through OpenRouter's OpenAI-compatible API.
+
+Deliberately minimal request: no `temperature`, `max_tokens`, `top_p`,
+`frequency_penalty`, `presence_penalty`, `response_format`, `timeout`, or
+retry parameters are set anywhere in this file -- generation currently runs
+entirely on whatever defaults the selected OpenRouter model applies. If
+deterministic or length-bounded answers are ever required, those parameters
+would need to be added here (and likely exposed via `Settings`, following
+the pattern already used for `model`/`base_url`/`app_name`).
+"""
+
 from openai import AsyncOpenAI
 
 from app.generation.context import GenerationContext

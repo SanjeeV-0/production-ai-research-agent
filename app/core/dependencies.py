@@ -1,3 +1,18 @@
+"""FastAPI dependency-injection wiring -- the application's composition root.
+
+This module owns *which concrete implementation* backs each protocol/ABC
+(EmbeddingProvider, Reranker, QueryDecomposer, FileStorage, GenerationProvider)
+and how per-request services (RetrievalService, IngestionService, ...) are
+assembled from them plus the current request's DB session. It does not
+contain business logic itself -- every factory here just reads `Settings`
+and constructs an object.
+
+Process-lifetime singletons (models, API clients) are `@lru_cache`d so they
+are constructed once per process, not once per request; everything that
+needs a request-scoped `AsyncSession` is a plain (uncached) function that
+FastAPI re-resolves per request.
+"""
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -29,7 +44,15 @@ from app.storage.local import LocalFileStorage
 
 @lru_cache
 def get_query_decomposition_provider() -> OpenRouterQueryDecompositionProvider:
-    """Return the configured OpenRouter query decomposition provider."""
+    """Return the configured OpenRouter query decomposition provider.
+
+    Raises eagerly (at dependency-resolution time, before any retrieval
+    logic runs) if OPENROUTER_API_KEY is unset. Because `get_retrieval_service`
+    below always requests a QueryDecomposer, this effectively makes
+    OPENROUTER_API_KEY a hard requirement for POST /retrieval/search and
+    POST /research/ask, even though RetrievalService itself treats a missing
+    decomposer as "skip decomposition" rather than an error.
+    """
 
     settings = get_settings()
 
@@ -98,7 +121,13 @@ async def get_retrieval_service(
         Depends(get_query_decomposer),
     ],
 ) -> RetrievalService:
-    """Create a retrieval service for the current database session."""
+    """Create a retrieval service for the current database session.
+
+    `query_decomposer` and `reranker` are always supplied here -- there is
+    currently no configuration path to run retrieval without either one,
+    even though `RetrievalService` itself supports `query_decomposer=None`
+    / `reranker=None` at the constructor level (used by unit tests).
+    """
 
     return RetrievalService(
         repository=DocumentRepository(session),

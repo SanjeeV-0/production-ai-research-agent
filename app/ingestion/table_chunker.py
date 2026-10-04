@@ -1,3 +1,9 @@
+"""NOT part of the active ingestion pipeline -- see
+`app.ingestion.structure_chunker` module docstring for why. Only reachable
+from `structure_chunker.group_structural_units`, which is itself unused by
+`IngestionService`. Covered by tests/unit/test_table_chunker.py.
+"""
+
 from dataclasses import dataclass
 
 from app.ingestion.structure import TableData

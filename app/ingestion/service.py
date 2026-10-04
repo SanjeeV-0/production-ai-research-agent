@@ -1,3 +1,16 @@
+"""Orchestrates the whole document ingestion pipeline: loading -> content
+hashing/versioning -> physical file storage -> structural extraction ->
+sectioning -> semantic shredding -> size-guarded chunking -> embedding ->
+persistence -> lifecycle status transitions.
+
+This is the single entry point both `POST /documents` (new upload) and
+`POST .../retry` (reprocessing a FAILED version) call -- there is exactly
+one ingestion code path, not two. It owns transaction boundaries and
+failure-recovery (marking a version FAILED with the real exception message)
+but delegates every individual step (structure extraction, chunking,
+embedding, storage) to its own dedicated module.
+"""
+
 import hashlib
 import tempfile
 from pathlib import Path
@@ -73,6 +86,11 @@ class IngestionService:
 
         file_hash = hashlib.sha256(file_bytes).hexdigest()
 
+        # Idempotency short-circuit: DocumentService.ingest_document already
+        # found an existing Document row for this (logical_document_id,
+        # content_hash) pair and returned it unchanged (created=False). No
+        # new file write, no new StoredFile, no reprocessing -- the existing
+        # version (whatever its current status) is simply returned as-is.
         if not created:
             return document
 
@@ -84,6 +102,10 @@ class IngestionService:
             file_id=file_id,
         )
 
+        # Physical write happens BEFORE the StoredFile row is committed
+        # (below) -- if the DB commit then fails, the except block deletes
+        # this just-written file so no orphaned bytes remain with no DB
+        # record pointing at them.
         await self.file_storage.store(
             file_bytes,
             storage_key,
@@ -210,6 +232,11 @@ class IngestionService:
                 section_nodes,
             )
 
+            # 0.7 similarity threshold and 500 token budget are hard-coded
+            # here, not Settings fields -- changing either requires editing
+            # this call site. They control, respectively, how aggressively
+            # adjacent paragraphs are grouped into one chunk before
+            # splitting, and the final per-chunk size cap.
             semantic_units = shred_semantically(
                 structural_units,
                 embedding_provider=self.embedding_provider,

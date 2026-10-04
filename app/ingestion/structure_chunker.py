@@ -1,3 +1,16 @@
+"""NOT part of the active ingestion pipeline.
+
+`IngestionService` (app.ingestion.service) does not call
+`group_structural_units` -- it uses `app.ingestion.semantic_shredder` +
+`app.ingestion.size_guard` instead. This module (and the table-handling code
+it depends on, `app.ingestion.table_chunker`/`table_serializer`) is only
+exercised by its own unit/integration tests
+(tests/unit/test_structure_chunker.py,
+tests/integration/test_table_chunk_parent_context.py). In particular, since
+`StructureExtractor` never emits `UnitType.TABLE` units, the table-splitting
+branch here never actually runs against a real uploaded document today.
+"""
+
 from dataclasses import dataclass
 
 from app.ingestion.structure import StructuralUnit, UnitType

@@ -1,3 +1,8 @@
+"""Test double for `app.ingestion.similarity.SimilarityProvider`. Not used
+by any production code path -- exists so tests can supply a deterministic
+or stubbed similarity function without depending on a real embedding model.
+"""
+
 from collections.abc import Callable
 
 

@@ -1,3 +1,12 @@
+/**
+ * Document Library: manage the ingested corpus (upload, version history,
+ * retry, promote a version to current, delete). One card per LOGICAL
+ * document in the list view -- versions only ever appear nested inside a
+ * document's detail view, never as their own top-level card. Every
+ * action (retry/delete/set-current) calls its endpoint with both
+ * `logical_document_id` and `version_id` explicitly, matching the backend's
+ * two-identifier contract (see app/api/documents.py).
+ */
 import React, { useState, useEffect } from 'react';
 import {
   DocumentVersion,

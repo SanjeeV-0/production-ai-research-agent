@@ -1,3 +1,12 @@
+"""HTTP boundary for the Retrieval Explorer debugging tool: a thin
+translation layer over `RetrievalService.search`. Contains no retrieval
+logic itself -- its only job is computing `effective_trace` (the
+request-level `trace` flag ANDed with the server-side `Settings.trace_enabled`
+ceiling) and converting between `RetrievalService`'s dataclasses and this
+module's Pydantic response schemas. This endpoint never calls generation --
+see `app.api.research` for the RAG endpoint.
+"""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends

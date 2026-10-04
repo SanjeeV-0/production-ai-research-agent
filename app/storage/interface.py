@@ -1,3 +1,10 @@
+"""Physical-byte-storage contract. `app.storage.local.LocalFileStorage` is
+the only implementation. This layer owns nothing about the DATABASE record
+of a file (see `StoredFile` in `app.core.models`) -- it only knows how to
+store/retrieve/delete/check bytes at an opaque `storage_key` string built by
+`app.storage.keys.build_storage_key`.
+"""
+
 from abc import ABC, abstractmethod
 
 

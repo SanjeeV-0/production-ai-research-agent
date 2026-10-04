@@ -1,3 +1,11 @@
+"""FastAPI application entry point.
+
+Builds the `FastAPI` app, registers the three routers (documents, retrieval,
+research), and exposes two liveness/readiness endpoints. Contains no
+business logic itself -- every route's actual behavior lives in `app/api/*`
+and the service/repository layers they call.
+"""
+
 import logging
 
 from fastapi import FastAPI

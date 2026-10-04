@@ -1,3 +1,19 @@
+"""The retrieval pipeline: decomposition -> per-query vector search -> merge
+-> global rerank -> Top K (-> optional trace capture).
+
+This is the one and only retrieval implementation in the application --
+both `POST /retrieval/search` (the debugging "Retrieval Explorer") and
+`POST /research/ask` (RAG) call `RetrievalService.search` and never
+duplicate any of this logic themselves. It owns query decomposition
+orchestration, candidate merging/deduplication, and reranking; it does
+NOT own context assembly or LLM generation (see `app.generation`) and does
+NOT own the HTTP contract (see `app.api.retrieval` / `app.api.research`).
+
+Key invariant verified by `tests/unit/test_retrieval_decomposition.py`:
+decomposition and retrieval run identically regardless of `trace` -- the
+`trace` flag only controls whether `self.last_trace` is populated.
+"""
+
 from uuid import UUID
 
 from app.core.repositories.document import DocumentRepository
@@ -125,11 +141,22 @@ class RetrievalService:
         candidate_limit: int,
         trace: bool,
     ) -> list[RetrievedChunk]:
-        """Execute retrieval without observability concerns."""
+        """Execute retrieval without observability concerns.
+
+        `trace` is read ONLY in the final `if trace:` block below -- it must
+        never gate decomposition or the retrieval loop above it. Query
+        planning (decomposition) and candidate retrieval are the actual
+        execution; tracing is a side channel that observes that execution
+        after the fact.
+        """
 
         if self.query_decomposer is None:
             retrieval_queries = (query,)
         else:
+            # Decomposition always runs here, unconditionally, whenever a
+            # decomposer is configured -- this is the one call site that
+            # decides whether retrieval is single-query or multi-query, and
+            # it has no dependency on `trace` whatsoever.
             decomposition = await self.query_decomposer.decompose(query)
             retrieval_queries = decomposition.sub_queries
 
@@ -141,6 +168,9 @@ class RetrievalService:
         for retrieval_query in retrieval_queries:
             query_embedding = self.embedding_provider.embed_text(retrieval_query)
 
+            # candidate_limit applies PER sub-query, not split across them --
+            # N sub-queries can yield up to N * candidate_limit raw results
+            # before merging.
             candidates = await self.repository.search_similar_chunks(
                 query_embedding=query_embedding,
                 limit=candidate_limit,
@@ -153,6 +183,10 @@ class RetrievalService:
             for candidate in candidates:
                 existing = merged_candidates.get(candidate.chunk_id)
 
+                # Merge by chunk_id across sub-queries, keeping each chunk's
+                # best (lowest-distance) occurrence rather than the first one
+                # seen -- a chunk surfaced by two sub-queries should be
+                # ranked by its strongest match, not an arbitrary one.
                 if existing is None or candidate.distance < existing.distance:
                     merged_candidates[candidate.chunk_id] = candidate
 
@@ -165,6 +199,11 @@ class RetrievalService:
         if self.reranker is None:
             final_results = candidates[:limit]
         else:
+            # One global rerank pass over the WHOLE deduplicated pool, using
+            # the caller's original query (never an individual sub-query) --
+            # this is what makes cross-sub-query ranking comparable. Reranking
+            # per sub-query would score each pool against a different query
+            # and produce incomparable scores.
             reranked = self.reranker.rerank(
                 query,
                 candidates,
@@ -173,6 +212,14 @@ class RetrievalService:
             final_results = reranked[:limit]
 
         if trace:
+            # `candidates` here is the deduplicated pool BEFORE reranking, so
+            # its trace entries carry a cosine `distance` but a null
+            # `rerank_score` (RetrievedChunk.rerank_score defaults to None
+            # until the reranker sets it). `final_results` is the post-rerank
+            # list, so those entries DO carry a populated `rerank_score`.
+            # This asymmetry is intentional, not a bug: the candidate pool is
+            # "what was available", final_results is "what the reranker
+            # chose and how it scored it".
             self.last_trace = RetrievalTrace(
                 query=query,
                 original_query=query,
