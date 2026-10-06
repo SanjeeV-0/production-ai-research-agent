@@ -2,9 +2,11 @@ from unittest.mock import patch
 
 from app.config.settings import Settings
 from app.core.dependencies import (
+    get_generation_provider,
     get_query_decomposer,
     get_query_decomposition_provider,
 )
+from app.generation.openrouter import OpenRouterGenerationProvider
 from app.retrieval.openrouter_decomposition import (
     OpenRouterQueryDecompositionProvider,
 )
@@ -14,7 +16,12 @@ from app.retrieval.query_decomposer import QueryDecomposer
 def test_query_decomposition_provider_uses_openrouter_settings() -> None:
     settings = Settings(
         openrouter_api_key="test-key",
-        openrouter_model="test-model",
+        openrouter_decomposition_model="test-decomposition-model",
+        openrouter_decomposition_temperature=0.3,
+        openrouter_decomposition_max_tokens=64,
+        openrouter_decomposition_top_p=0.8,
+        openrouter_decomposition_response_format={"type": "json_object"},
+        openrouter_decomposition_reasoning_effort="low",
         openrouter_base_url="https://example.test/v1",
         openrouter_app_name="Test App",
     )
@@ -28,8 +35,56 @@ def test_query_decomposition_provider_uses_openrouter_settings() -> None:
         provider = get_query_decomposition_provider()
 
     assert isinstance(provider, OpenRouterQueryDecompositionProvider)
-    assert provider.model == "test-model"
+    assert provider.model == "test-decomposition-model"
+    assert provider.temperature == 0.3
+    assert provider.max_tokens == 64
+    assert provider.top_p == 0.8
+    assert provider.response_format == {"type": "json_object"}
+    assert provider.reasoning_effort == "low"
     assert str(provider.client.base_url) == "https://example.test/v1/"
+
+    get_query_decomposition_provider.cache_clear()
+
+
+def test_generation_provider_uses_generation_settings_not_decomposition_settings() -> None:
+    """Dependency wiring must not cross-wire the two roles' settings --
+    the generation provider receives ONLY `openrouter_generation_*` values,
+    which (per the approved defaults) differ from the decomposition ones."""
+
+    settings = Settings(
+        openrouter_api_key="test-key",
+        openrouter_generation_model="test-generation-model",
+        openrouter_generation_temperature=0.6,
+        openrouter_generation_max_tokens=512,
+        openrouter_generation_top_p=0.95,
+        openrouter_generation_response_format={"type": "text"},
+        openrouter_generation_reasoning_effort="high",
+        # Deliberately different decomposition values, to prove they never
+        # leak into the generation provider.
+        openrouter_decomposition_model="test-decomposition-model",
+        openrouter_decomposition_temperature=0.0,
+        openrouter_base_url="https://example.test/v1",
+        openrouter_app_name="Test App",
+    )
+
+    get_generation_provider.cache_clear()
+
+    with patch(
+        "app.core.dependencies.get_settings",
+        return_value=settings,
+    ):
+        provider = get_generation_provider()
+
+    assert isinstance(provider, OpenRouterGenerationProvider)
+    assert provider.model == "test-generation-model"
+    assert provider.temperature == 0.6
+    assert provider.max_tokens == 512
+    assert provider.top_p == 0.95
+    assert provider.response_format == {"type": "text"}
+    assert provider.reasoning_effort == "high"
+    assert str(provider.client.base_url) == "https://example.test/v1/"
+
+    get_generation_provider.cache_clear()
 
 
 def test_query_decomposer_uses_decomposition_provider() -> None:

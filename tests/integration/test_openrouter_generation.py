@@ -15,7 +15,12 @@ async def test_real_openrouter_generation() -> None:
 
     provider = OpenRouterGenerationProvider(
         api_key=settings.openrouter_api_key,
-        model=settings.openrouter_model,
+        model=settings.openrouter_generation_model,
+        temperature=settings.openrouter_generation_temperature,
+        max_tokens=settings.openrouter_generation_max_tokens,
+        top_p=settings.openrouter_generation_top_p,
+        response_format=settings.openrouter_generation_response_format,
+        reasoning_effort=settings.openrouter_generation_reasoning_effort,
         base_url=settings.openrouter_base_url,
         app_name=settings.openrouter_app_name,
     )

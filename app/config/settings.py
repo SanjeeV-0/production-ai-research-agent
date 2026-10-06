@@ -8,10 +8,13 @@ that uses them) lives here. Values are read from the environment / `.env`
 still works via its environment variable even if absent from that example
 file.
 
-`OPENROUTER_MODEL` is shared by both query decomposition
-(`app.retrieval.openrouter_decomposition`) and answer generation
-(`app.generation.openrouter`) -- there is intentionally no separate
-decomposition-model setting.
+Query decomposition (`app.retrieval.openrouter_decomposition`) and answer
+generation (`app.generation.openrouter`) are configured independently --
+each has its own `openrouter_{decomposition,generation}_*` model/sampling
+settings below, rather than sharing one a single model. Both still share
+the connection-level settings (`openrouter_api_key`, `openrouter_base_url`,
+`openrouter_app_name`), since those describe the OpenRouter account/client,
+not a per-role choice.
 """
 
 from functools import lru_cache
@@ -51,11 +54,26 @@ class Settings(BaseSettings):
     # in practice this makes decomposition mandatory, not optional, since
     # the DI wiring always constructs a decomposer for the retrieval service.
     openrouter_api_key: str | None = None
-    # Shared by query decomposition AND answer generation -- there is no
-    # separate decomposition-model setting.
-    openrouter_model: str = "meta-llama/llama-3.3-8b-instruct:free"
+
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_app_name: str = "Production AI Research & Knowledge Agent"
+
+    # Query decomposition LLM configuration.
+    openrouter_decomposition_model: str = "gemma-4-31b-it:free"
+    openrouter_decomposition_temperature: float = 0.0
+    openrouter_decomposition_max_tokens: int | None = None
+    openrouter_decomposition_top_p: float = 1.0
+    openrouter_decomposition_response_format: dict[str, object] | None = None
+    openrouter_decomposition_reasoning_effort: str | None = None
+
+    # Answer generation LLM configuration.
+    openrouter_generation_model: str = "gemma-4-31b-it:free"
+    openrouter_generation_temperature: float = 0.2
+    openrouter_generation_max_tokens: int | None = None
+    openrouter_generation_top_p: float = 1.0
+    openrouter_generation_response_format: dict[str, object] | None = None
+    openrouter_generation_reasoning_effort: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

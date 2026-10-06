@@ -1,13 +1,14 @@
 """The only `GenerationProvider` implementation: calls the answer-generation
 LLM through OpenRouter's OpenAI-compatible API.
 
-Deliberately minimal request: no `temperature`, `max_tokens`, `top_p`,
-`frequency_penalty`, `presence_penalty`, `response_format`, `timeout`, or
-retry parameters are set anywhere in this file -- generation currently runs
-entirely on whatever defaults the selected OpenRouter model applies. If
-deterministic or length-bounded answers are ever required, those parameters
-would need to be added here (and likely exposed via `Settings`, following
-the pattern already used for `model`/`base_url`/`app_name`).
+`temperature`/`max_tokens`/`top_p`/`response_format`/`reasoning_effort` are
+explicit, per-instance configuration (sourced from
+`Settings.openrouter_generation_*` via `app.core.dependencies.
+get_generation_provider`) rather than left to whatever the selected
+OpenRouter model defaults to. `max_tokens`/`response_format`/
+`reasoning_effort` are optional -- only included in the actual request when
+configured (not `None`); `temperature`/`top_p` are always sent explicitly.
+No retry/timeout handling is added here.
 """
 
 from openai import AsyncOpenAI
@@ -23,10 +24,20 @@ class OpenRouterGenerationProvider:
         self,
         api_key: str,
         model: str,
+        temperature: float,
+        max_tokens: int | None,
+        top_p: float,
+        response_format: dict[str, object] | None,
+        reasoning_effort: str | None,
         base_url: str = "https://openrouter.ai/api/v1",
         app_name: str = "Production AI Research & Knowledge Agent",
     ) -> None:
         self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.response_format = response_format
+        self.reasoning_effort = reasoning_effort
 
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -43,9 +54,15 @@ class OpenRouterGenerationProvider:
     ) -> GenerationResult:
         """Generate an answer using OpenRouter."""
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[
+        # `temperature`/`top_p` are always explicit, configured values.
+        # `max_tokens`/`response_format`/`reasoning_effort` are only
+        # included when actually configured (not None), so an unconfigured
+        # field never reaches the API as an explicit override.
+        request_kwargs: dict[str, object] = {
+            "model": self.model,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "messages": [
                 {
                     "role": "system",
                     "content": (
@@ -61,7 +78,18 @@ class OpenRouterGenerationProvider:
                     "content": (f"Research context:\n\n{context.text}\n\nQuestion:\n\n{query}"),
                 },
             ],
-        )
+        }
+
+        if self.max_tokens is not None:
+            request_kwargs["max_tokens"] = self.max_tokens
+
+        if self.response_format is not None:
+            request_kwargs["response_format"] = self.response_format
+
+        if self.reasoning_effort is not None:
+            request_kwargs["reasoning_effort"] = self.reasoning_effort
+
+        response = await self.client.chat.completions.create(**request_kwargs)
 
         message = response.choices[0].message.content
 

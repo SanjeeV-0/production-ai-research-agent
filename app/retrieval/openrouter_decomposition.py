@@ -17,10 +17,20 @@ class OpenRouterQueryDecompositionProvider:
         self,
         api_key: str,
         model: str,
+        temperature: float,
+        max_tokens: int | None,
+        top_p: float,
+        response_format: dict[str, object] | None,
+        reasoning_effort: str | None,
         base_url: str = "https://openrouter.ai/api/v1",
         app_name: str = "Production AI Research & Knowledge Agent",
     ) -> None:
         self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.top_p = top_p
+        self.response_format = response_format
+        self.reasoning_effort = reasoning_effort
 
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -39,13 +49,18 @@ class OpenRouterQueryDecompositionProvider:
         original query alone rather than propagating the failure.
         """
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            # Hard-coded (not a Settings field): decomposition should be
-            # deterministic given the same input, since it's a structural
-            # query-planning step, not a creative one.
-            temperature=0,
-            messages=[
+        # `temperature`/`top_p` are always explicit (Settings defaults
+        # decomposition's temperature to 0.0 for deterministic, structural
+        # query planning -- but that is now a configured value, not a
+        # hard-coded one here). `max_tokens`/`response_format`/
+        # `reasoning_effort` are only included when actually configured, so
+        # an unconfigured (None) value never reaches the API as an explicit
+        # override of the provider's own default behavior for that field.
+        request_kwargs: dict[str, object] = {
+            "model": self.model,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "messages": [
                 {
                     "role": "system",
                     "content": (
@@ -64,7 +79,18 @@ class OpenRouterQueryDecompositionProvider:
                     "content": query,
                 },
             ],
-        )
+        }
+
+        if self.max_tokens is not None:
+            request_kwargs["max_tokens"] = self.max_tokens
+
+        if self.response_format is not None:
+            request_kwargs["response_format"] = self.response_format
+
+        if self.reasoning_effort is not None:
+            request_kwargs["reasoning_effort"] = self.reasoning_effort
+
+        response = await self.client.chat.completions.create(**request_kwargs)
 
         message = response.choices[0].message.content
 

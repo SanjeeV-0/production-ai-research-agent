@@ -23,6 +23,11 @@ def provider() -> OpenRouterQueryDecompositionProvider:
     provider = OpenRouterQueryDecompositionProvider(
         api_key="test-key",
         model="test-model",
+        temperature=0.0,
+        max_tokens=None,
+        top_p=1.0,
+        response_format=None,
+        reasoning_effort=None,
     )
     provider.client.chat.completions.create = AsyncMock()
     return provider
@@ -45,7 +50,10 @@ async def test_returns_queries_from_valid_response(provider) -> None:
 
 
 @pytest.mark.asyncio
-async def test_uses_deterministic_generation(provider) -> None:
+async def test_sends_configured_model_temperature_and_top_p(provider) -> None:
+    """temperature is no longer hard-coded to 0 -- it (and model/top_p) must
+    come straight from the provider's configured values."""
+
     provider.client.chat.completions.create.return_value = make_response(
         '{"queries": ["What is RAG?"]}'
     )
@@ -53,7 +61,49 @@ async def test_uses_deterministic_generation(provider) -> None:
     await provider.decompose("What is RAG?")
 
     call = provider.client.chat.completions.create.await_args
-    assert call.kwargs["temperature"] == 0
+    assert call.kwargs["model"] == "test-model"
+    assert call.kwargs["temperature"] == 0.0
+    assert call.kwargs["top_p"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_omits_optional_fields_when_not_configured(provider) -> None:
+    provider.client.chat.completions.create.return_value = make_response(
+        '{"queries": ["What is RAG?"]}'
+    )
+
+    await provider.decompose("What is RAG?")
+
+    call = provider.client.chat.completions.create.await_args
+    assert "max_tokens" not in call.kwargs
+    assert "response_format" not in call.kwargs
+    assert "reasoning_effort" not in call.kwargs
+
+
+@pytest.mark.asyncio
+async def test_includes_optional_fields_when_configured() -> None:
+    provider = OpenRouterQueryDecompositionProvider(
+        api_key="test-key",
+        model="test-model",
+        temperature=0.5,
+        max_tokens=128,
+        top_p=0.8,
+        response_format={"type": "json_object"},
+        reasoning_effort="low",
+    )
+    provider.client.chat.completions.create = AsyncMock(
+        return_value=make_response('{"queries": ["What is RAG?"]}')
+    )
+
+    await provider.decompose("What is RAG?")
+
+    call = provider.client.chat.completions.create.await_args
+    assert call.kwargs["model"] == "test-model"
+    assert call.kwargs["temperature"] == 0.5
+    assert call.kwargs["top_p"] == 0.8
+    assert call.kwargs["max_tokens"] == 128
+    assert call.kwargs["response_format"] == {"type": "json_object"}
+    assert call.kwargs["reasoning_effort"] == "low"
 
 
 @pytest.mark.asyncio
