@@ -128,3 +128,50 @@ def test_docx_loader_renders_multiple_tables_with_distinct_ids(tmp_path: Path) -
     assert "| 1 | 2 |" in pages[0].content
     assert "| Only Column |" in pages[0].content
     assert "| Value |" in pages[0].content
+
+
+def test_docx_loader_converts_native_heading_styles_to_markdown_headings(
+    tmp_path: Path,
+) -> None:
+    docx_path = tmp_path / "headings.docx"
+
+    document = DocxDocument()
+
+    document.add_heading("Retrieval", level=1)
+    document.add_paragraph("Retrieval finds relevant evidence.")
+    document.add_heading("Vector Search", level=2)
+    document.add_paragraph("Vector search uses embeddings.")
+    document.add_heading("HNSW", level=3)
+    document.add_paragraph("HNSW provides approximate nearest-neighbor search.")
+
+    document.save(docx_path)
+
+    loader = DocxLoader()
+    pages = loader.load(docx_path)
+
+    assert pages[0].content == (
+        "# Retrieval\n"
+        "Retrieval finds relevant evidence.\n"
+        "## Vector Search\n"
+        "Vector search uses embeddings.\n"
+        "### HNSW\n"
+        "HNSW provides approximate nearest-neighbor search."
+    )
+
+
+def test_docx_loader_preserves_normal_paragraphs_with_native_headings(
+    tmp_path: Path,
+) -> None:
+    docx_path = tmp_path / "mixed.docx"
+
+    document = DocxDocument()
+    document.add_heading("Introduction", level=1)
+    document.add_paragraph("This remains a normal paragraph.")
+    document.add_heading("Details", level=2)
+
+    document.save(docx_path)
+
+    loader = DocxLoader()
+    pages = loader.load(docx_path)
+
+    assert pages[0].content == ("# Introduction\nThis remains a normal paragraph.\n## Details")

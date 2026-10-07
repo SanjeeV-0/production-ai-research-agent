@@ -35,7 +35,25 @@ class DocxLoader(DocumentLoader):
     def load(self, path: Path) -> list[LoadedPage]:
         document = DocxDocument(path)
 
-        paragraphs = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+        paragraphs: list[str] = []
+
+        for paragraph in document.paragraphs:
+            text = paragraph.text.strip()
+            if not text:
+                continue
+
+            style_name = paragraph.style.name if paragraph.style is not None else ""
+
+            if style_name.startswith("Heading "):
+                try:
+                    level = int(style_name.removeprefix("Heading ").strip())
+                except ValueError:
+                    level = 0
+
+                if 1 <= level <= 6:
+                    text = f"{'#' * level} {text}"
+
+            paragraphs.append(text)
 
         table_sections: list[str] = []
 
