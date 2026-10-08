@@ -3,6 +3,8 @@ from pathlib import Path
 from docx import Document as DocxDocument
 
 from app.ingestion.loaders.docx import DocxLoader
+from app.ingestion.structure import UnitType
+from app.ingestion.structure_extractor import StructureExtractor
 
 
 def test_docx_loader_extracts_paragraphs_in_document_order(tmp_path: Path) -> None:
@@ -175,3 +177,25 @@ def test_docx_loader_preserves_normal_paragraphs_with_native_headings(
     pages = loader.load(docx_path)
 
     assert pages[0].content == ("# Introduction\nThis remains a normal paragraph.\n## Details")
+
+
+def test_docx_fixture_preserves_native_heading_structure() -> None:
+    fixture_path = Path("tests/evaluation/fixtures/benchmark/vector_search_fundamentals.docx")
+
+    pages = DocxLoader().load(fixture_path)
+    units = StructureExtractor().extract(pages)
+
+    headings = [unit for unit in units if unit.unit_type == UnitType.HEADING]
+
+    assert [heading.content for heading in headings] == [
+        "Vector Search Fundamentals",
+        "Embeddings",
+        "Similarity Search",
+        "Chunking and Retrieval Units",
+        "Recall and Precision",
+        "Failure Modes",
+        "Practical Retrieval Design",
+    ]
+
+    assert headings[0].section_path == "Vector Search Fundamentals"
+    assert headings[1].section_path == "Embeddings"
