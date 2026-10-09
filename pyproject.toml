@@ -28,6 +28,11 @@ dev = [
     "pytest-asyncio>=1.0,<2.0",
     "httpx2>=0.1",
     "ruff>=0.16,<0.17",
+    # Only used to regenerate the Benchmark V2 PDF fixtures
+    # (tests/evaluation/fixtures/convert_benchmark_v2_formats.py); the
+    # committed .pdf files are read back via the production pypdf
+    # dependency, not reportlab.
+    "reportlab>=5,<6",
 ]
 
 [tool.pytest.ini_options]

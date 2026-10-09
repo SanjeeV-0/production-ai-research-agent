@@ -1,0 +1,1123 @@
+[
+  {
+    "id": "q001",
+    "query": "What distance operators does pgvector provide for comparing vectors?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "computes Euclidean (L2) distance, `<#>` computes the negative inner product, and `<=>` computes cosine distance", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q002",
+    "query": "How many dimensions does the production embedding model's output vector have?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "sentence-transformers/all-MiniLM-L6-v2, which produces 384-dimensional embeddings, a deliberately compact representation chosen to keep encoding latency low", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q003",
+    "query": "Is there a cap on how many subqueries a single query decomposition call can generate?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "capping decomposition at four subqueries in addition to the always-retained original query, which bounds both the number of independent vector searches a single request can trigger", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q004",
+    "query": "Which source file formats get full structural parsing during ingestion, as opposed to just flat text extraction?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "supports two source formats for structured ingestion: Markdown files, loaded and parsed as plain text using their native heading and table syntax, and Word documents in the DOCX format", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q005",
+    "query": "What token budget does the chunking pipeline target for each chunk?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "The production chunking pipeline targets approximately five hundred tokens per chunk, a figure chosen as a balance between two competing pressures", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q006",
+    "query": "Why did the production system settle on HNSW rather than IVFFlat for its vector index?",
+    "category": "direct_fact",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "The production system uses an HNSW index specifically because its recall advantage and its graceful behavior under incremental inserts outweigh the higher build time and memory cost", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q007",
+    "query": "Does the cross-encoder reranker ever score candidates against the generated subqueries, or only against something else?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "is passed to a cross-encoder reranker together with the original user query, never the generated subqueries", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q008",
+    "query": "What does the pipeline do if the reranker times out or fails on a given request?",
+    "category": "direct_fact",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "the documented fallback in this system is to return the vector-search-ordered candidate pool directly, unreranked, rather than returning no results at all, trading ranking quality for availability", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q009",
+    "query": "Is query decomposition a mandatory step for every request, or can the pipeline operate without it?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "this stage is optional in the sense that a simple query may pass through unmodified as a single subquery equal to the original, but the architectural step itself is always present in the request path", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q010",
+    "query": "What happens to a user query that is longer than the embedding model can actually accept?",
+    "category": "direct_fact",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "all-MiniLM-L6-v2 accepts at most 256 input tokens, and a query submitted with more tokens than that is truncated before encoding rather than rejected", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q011",
+    "query": "How accurate is a plain sequential scan search in pgvector when no index is used at all?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "pgvector can still perform similarity search by sequentially scanning every row and computing the configured distance metric against the query vector, which is exact, meaning it is guaranteed to find the true nearest neighbors with no approximation error", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q012",
+    "query": "What does the Recall@K metric actually tell you about a retrieval system?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Recall@K measures, out of all the chunks that are genuinely relevant to a query anywhere in the corpus, what fraction of them appear within the top K results actually returned, which makes it a coverage metric", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q013",
+    "query": "What exactly does Mean Reciprocal Rank measure about a ranked result list?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Mean Reciprocal Rank, commonly abbreviated MRR, measures how early the first relevant result appears in the ranked list, computed per query as one divided by the rank position of the first relevant result", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q014",
+    "query": "What grading scale is used when assigning relevance to a piece of evidence in this benchmarking approach?",
+    "category": "direct_fact",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "a four-point scale running from zero, meaning not relevant at all, through one, meaning related but insufficient context on its own, through two, meaning strongly supporting evidence, up to three, meaning the chunk directly answers or is essential evidence for the query", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q015",
+    "query": "What happens to the chunks belonging to an older version of a document once it has been re-ingested?",
+    "category": "direct_fact",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "the previous version's chunks are retained for traceability rather than deleted outright, which supports being able to answer, after the fact, exactly what content a query would have retrieved against an earlier version", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q016",
+    "query": "How does the system avoid creating duplicate versions when the same source file is ingested more than once?",
+    "category": "direct_fact",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "Duplicate ingestion prevention is handled at the document level by comparing a content hash of the newly loaded source file against the content hash recorded for the current version of that logical document", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q017",
+    "query": "Why is angle-based vector comparison a natural fit for embeddings produced by contrastive training, rather than just comparing raw vector length?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Cosine similarity measures the angle between two vectors while ignoring their magnitude entirely, which makes it a natural fit for embedding models trained with a contrastive objective", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "the production system standardizes on cosine distance for vector search specifically because it remains correct even if a future embedding model substitution does not happen to produce unit-normalized vectors", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q018",
+    "query": "If a corpus contains a specialized acronym the embedding model never saw during training, what happens to how that term gets represented?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "a corpus-specific term, acronym, or product name that the embedding model never encountered during its original training has no learned representation, and the model falls back to encoding it as something close to an unknown or rare subword sequence", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q019",
+    "query": "Why do chunks that are either very short or very long both tend to hurt retrieval quality, even though for different reasons?",
+    "category": "semantic_retrieval",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "large chunks lose recall because a single chunk's embedding is forced to represent multiple sub-topics simultaneously, diluting the specific signal a query is looking for", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "it is close to the largest span the embedding model can summarize into a single vector without that vector becoming an unhelpfully diffuse average of unrelated sub-topics, while still being large enough to avoid the keyword-sensitivity problem", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q020",
+    "query": "When a team upgrades to a newer version of its text embedding model, why can't it just keep using vectors it already computed under the old version?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "two different embedding model checkpoints, even two checkpoints of the same architecture at different fine-tuning stages, do not share a common vector space; a query embedded with model version two and compared against chunks embedded with model version one will produce distances that are not meaningfully interpretable", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "every previously embedded chunk in the corpus must be re-embedded with the new model weights, because vectors produced by two different versions of a model, even versions that are closely related through fine-tuning, are not guaranteed to be comparable", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q021",
+    "query": "What goes wrong if a benchmark's questions are basically just reworded versions of the sentence that answers them?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Queries constructed by copying or lightly editing a sentence directly from the intended answer passage similarly inflate measured quality, since the resulting query shares enough exact vocabulary with the one chunk it was derived from", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q022",
+    "query": "Why might a reranker give an unfairly high score to a passage just because it uses the same wording as the question, even when it's not the best answer?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "Distractor promotion describes a failure where the reranker assigns a high score to a candidate that shares substantial vocabulary or surface-level phrasing with the query, discusses a closely related mechanism, but does not actually answer what the query is asking", "relevance": 3},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "the reranker consistently assigns high scores to candidates matching the query's exact terminology even when a more semantically appropriate candidate, phrased using different terminology for the same underlying concept, is also present in the pool", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q023",
+    "query": "What's the practical downside of a ranking approach that judges relevance by directly comparing two results against each other rather than scoring each one on its own?",
+    "category": "semantic_retrieval",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "A pairwise reranker instead compares two candidates directly against each other at a time, producing a judgment about which of the pair is more relevant to the query rather than an absolute score for either one individually", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q024",
+    "query": "Why might a passage that matched a sub-question really well still end up ranked low in the final list the system returns?",
+    "category": "semantic_retrieval",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "a candidate chunk can be ranked relatively low by the final reranking stage even though it matched a subquery very well during vector search, if that chunk turns out to be less relevant to the original query's full intent than its subquery-level match alone suggested", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q025",
+    "query": "What tends to happen to search quality right after a huge batch of new content gets loaded into the database all at once?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "a bulk ingestion job that inserts a very large number of new chunks in a short period can temporarily degrade HNSW recall for queries whose true nearest neighbors are among the newly inserted vectors", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q026",
+    "query": "Why doesn't simply searching more broadly at query time fix a nearest-neighbor graph that was poorly connected when it was built?",
+    "category": "semantic_retrieval",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "raising it can never recover a vector that the graph structure itself failed to connect well during index build; a poorly connected region of the graph, caused by build-time parameters that were too low for the corpus's actual distribution, will continue to produce weak recall", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q027",
+    "query": "Why is it risky to judge a search system's health purely from its average response time?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "an average can look entirely healthy even while a significant fraction of requests are experiencing latency bad enough to matter, if those slow requests are a minority diluted by a much larger number of fast ones", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q028",
+    "query": "What's the problem with building an evaluation corpus out of passages that mostly share the same boilerplate structure with only a word or two swapped out?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "A benchmark corpus that is heavily template-based, where many passages share repeated boilerplate structure or near-identical phrasing varied only by a single substituted term, systematically inflates measured retrieval quality", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q029",
+    "query": "Why might a short follow-up question in an ongoing conversation fail to retrieve the right evidence even though decomposition is turned on?",
+    "category": "semantic_retrieval",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Decomposition in this system operates on the current turn's query text alone; it does not fold in prior conversation history, so a short follow-up query that only makes sense in light of an earlier turn", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q030",
+    "query": "Why can't a long table just be cut off at an arbitrary point the same way a block of regular prose text might be split?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "naively splitting a long table at an arbitrary token boundary, the same way fixed-size chunking would split prose, would produce a second fragment whose rows have no header context at all once that fragment is retrieved on its own", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q031",
+    "query": "Why does re-submitting the exact same source file for ingestion need special handling instead of just processing it again normally?",
+    "category": "semantic_retrieval",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "when the two hashes match exactly, the ingestion job treats the request as already satisfied and does not produce a new version at all, rather than re-running structural extraction and chunking against content that is byte-for-byte identical", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q032",
+    "query": "What's the fundamental difference between how IVFFlat and HNSW organize vectors so they can be searched quickly?",
+    "category": "concept_distinction",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "IVFFlat partitions the vector space into a configured number of clusters during index build, using k-means-style clustering, and at query time only searches within the small number of clusters nearest to the query vector", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "HNSW builds a multi-layer navigable graph structure where each vector is a node connected to its approximate nearest neighbors, and search proceeds by greedily traversing the graph from an entry point toward the query vector's neighborhood", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q033",
+    "query": "What's the core architectural difference between a bi-encoder and a cross-encoder when processing a query and a passage?",
+    "category": "concept_distinction",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "a single shared transformer encodes the query and the candidate passage independently into fixed-length vectors, and relevance is approximated afterward as the geometric distance between those two vectors", "relevance": 3},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "A cross-encoder reranker takes the query and a single candidate chunk together as one combined input to a transformer model, allowing every token of the query to attend directly to every token of the candidate during encoding", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q034",
+    "query": "How is Recall@K conceptually different from Precision@K as a way of judging a retrieval result?",
+    "category": "concept_distinction",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Recall@K measures, out of all the chunks that are genuinely relevant to a query anywhere in the corpus, what fraction of them appear within the top K results actually returned, which makes it a coverage metric", "relevance": 3},
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Precision@K measures, out of the K results actually returned, what fraction of them are genuinely relevant, which makes it a purity metric", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q035",
+    "query": "What distinguishes pointwise, pairwise, and listwise approaches to reranking a set of candidates?",
+    "category": "concept_distinction",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "A pointwise reranker, which is the approach used in this system's cross-encoder, scores each query-candidate pair independently and produces one absolute relevance score per candidate", "relevance": 3},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "A pairwise reranker instead compares two candidates directly against each other at a time, producing a judgment about which of the pair is more relevant to the query rather than an absolute score for either one individually", "relevance": 3},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "A listwise reranker considers the entire candidate pool at once and directly outputs an ordering or a set of scores calibrated relative to each other within that specific pool", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q036",
+    "query": "Is the cosine similarity used by the embedding model the same thing as the cosine distance operator used in the database, or are they distinct concepts?",
+    "category": "concept_distinction",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Cosine similarity measures the angle between two vectors while ignoring their magnitude entirely, which makes it a natural fit for embedding models trained with a contrastive objective", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "The production schema builds its HNSW index using the cosine distance operator `<=>`, consistent with the embedding model's unit-normalized output vectors", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q037",
+    "query": "What's the difference between embedding drift caused by swapping in a new model versus drift caused by the corpus's own content gradually changing?",
+    "category": "concept_distinction",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "two different embedding model checkpoints, even two checkpoints of the same architecture at different fine-tuning stages, do not share a common vector space", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "if a corpus that previously consisted mostly of narrative documentation gradually accumulates heavily tabular, numeric, or code-heavy content that the embedding model was never well-trained on, retrieval quality for that newer content can degrade even though the embedding model itself never changed", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q038",
+    "query": "How does monitoring index lag differ from monitoring the recall dip that happens right after a bulk insert?",
+    "category": "concept_distinction",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "this measurement is distinct from the HNSW recall degradation that can occur immediately after a large bulk insert, since lag monitoring is concerned with availability and integration timing, while bulk-insert recall degradation is concerned with ranking quality", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "a bulk ingestion job that inserts a very large number of new chunks in a short period can temporarily degrade HNSW recall for queries whose true nearest neighbors are among the newly inserted vectors", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q039",
+    "query": "How does evaluating retrieval quality offline against a fixed benchmark differ from evaluating it online against live user traffic?",
+    "category": "concept_distinction",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Offline benchmarks, built from a fixed, pre-labeled set of queries and relevance judgments, have the advantage of being fully reproducible and inexpensive to rerun whenever a system configuration changes, but they are necessarily limited to whatever queries and relevance judgments were included at construction time", "relevance": 3},
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Position bias is a central challenge in online evaluation: users are more likely to click on or otherwise engage with a result simply because it appears earlier in the ranked list, independent of that result's actual relevance", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q040",
+    "query": "Does a chunk's recorded section path actually change how vector search ranks it, or does it serve a different purpose?",
+    "category": "concept_distinction",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "This section path is not used as a substitute for semantic retrieval, meaning the vector search stage does not filter or boost candidates based on section path matching a query, but it is retained as metadata", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q041",
+    "query": "What makes a hard negative different from an ordinary randomly sampled negative when training an embedding model?",
+    "category": "concept_distinction",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Hard negative mining instead deliberately selects negatives that are topically close to the true positive, for example by first running an existing retrieval system, whether a simpler keyword-based system or an earlier version of the embedding model itself, against the training query", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Random in-batch negatives, meaning simply treating every other passage that happens to be in the same training batch as a negative for a given query, are the cheapest negative source to construct", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q042",
+    "query": "How does the candidate_limit setting affect the pipeline differently from the final_limit setting?",
+    "category": "concept_distinction",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "it functions as a ceiling on how much raw recall the rest of the pipeline is even given the opportunity to work with, since a chunk that vector search does not place inside the top `candidate_limit` results can never be recovered by reranking", "relevance": 3},
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "a smaller final limit returns fewer chunks, so each one needs to be correct for precision to stay high, while a larger final limit tolerates some lower-relevance chunks appearing in the result set", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q043",
+    "query": "What's the difference between a malformed table and an orphaned heading as ingestion issues?",
+    "category": "concept_distinction",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "A malformed table, for example a Markdown table missing its required dash-and-pipe separator row immediately after the header row, is not recognized as a table at all by the detection logic, and is instead ingested as a sequence of ordinary paragraph lines", "relevance": 3},
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "An orphaned heading, meaning a heading unit with no body content directly following it before either the document ends or the next heading begins, is still extracted and retained as a valid structural unit on its own", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q044",
+    "query": "How does truncation on the query side differ from truncation on the chunk side when content exceeds the embedding model's input limit?",
+    "category": "concept_distinction",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "all-MiniLM-L6-v2 accepts at most 256 input tokens, and a query submitted with more tokens than that is truncated before encoding rather than rejected", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "all-MiniLM-L6-v2 has a maximum input length, and any chunk content beyond that length is truncated before encoding rather than raising an error", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q045",
+    "query": "What does a candidate log entry capture, and how is that different from a rerank score log entry?",
+    "category": "multi_part",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "Candidate logs, recorded at a lower, sampled rate given their larger volume, capture the full merged candidate pool before reranking, including each candidate's vector distance and which subquery or subqueries surfaced it", "relevance": 3},
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "Rerank score logs capture each candidate's score from the cross-encoder together with its final rank position, which allows a later analysis to check for signs of the calibration and distractor-promotion failure modes", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q046",
+    "query": "What information does the production schema store for each chunk, and how is document versioning tracked separately from chunk storage?",
+    "category": "multi_part",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "a chunk index recording its position within that document, the chunk's textual content, its section path and section level inherited from the structural extraction step, any table-specific metadata such as a table identifier and fragment index", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "Document identity is tracked separately from chunk identity through a logical document identifier that remains stable across re-ingestion of an updated version of the same source document", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q047",
+    "query": "What justifies keeping the production embedding model's dimensionality relatively low, considering both the latency cost and the quality gained from larger alternatives?",
+    "category": "multi_part",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "The relative recall gains from doubling or tripling embedding dimensionality are real but modest compared to the latency cost, which is why a 384-dimension model remains attractive", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "| bge-large-en-v1.5 | 1024 | 512 | 27.4 ms | 1.15 |", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q048",
+    "query": "How does chunking handle a short leftover paragraph at the end of a section, and what happens to a heading that has no content following it at all?",
+    "category": "multi_part",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "Chunks that are substantially undersized, for example a single short paragraph left over after a size-based split, are merged with an adjacent chunk from the same section rather than retrieved as an isolated fragment", "relevance": 3},
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "is discarded entirely rather than persisted as an extremely small, low-information chunk, on the reasoning that a chunk carrying only a handful of tokens is more likely to introduce noise into the candidate pool", "relevance": 3},
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "Orphaned headings occur when a heading unit ends up alone in its own chunk, separated from the content that follows it", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q049",
+    "query": "If the reranker decides none of the retrieved candidates are actually strongly relevant, can the system go back and search again within that same request?",
+    "category": "multi_part",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "if the reranker determines that none of the candidates in the pool are strongly relevant, there is no mechanism to trigger an expanded or reformulated vector search within that same request", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q050",
+    "query": "What's the fallback when the reranker itself fails, and how does that compare to what happens when the database or embedding provider is unreachable at startup?",
+    "category": "multi_part",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "the documented fallback in this system is to return the vector-search-ordered candidate pool directly, unreranked, rather than returning no results at all, trading ranking quality for availability", "relevance": 3},
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "of which have an equivalent fallback that still produces a meaningful result, does block readiness, since no later pipeline stage can substitute for any of those three", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q051",
+    "query": "How is the number of subqueries from decomposition kept bounded, and what guards against the decomposition model inventing details that weren't actually in the original question?",
+    "category": "multi_part",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "capping decomposition at four subqueries in addition to the always-retained original query, which bounds both the number of independent vector searches a single request can trigger", "relevance": 3},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Hallucinated subqueries are a more severe version of drift, where the decomposition model introduces an assumption, a named entity, or a sub-topic that was not actually present in or implied by the original query at all", "relevance": 3},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Few-shot examples included in the prompt demonstrate the intended decomposition behavior for both decomposable and non-decomposable queries side by side", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q052",
+    "query": "What happens to an HNSW index's footprint when rows underneath it are deleted or re-embedded, and what maintenance step is meant to address that?",
+    "category": "multi_part",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "deleted entries are logically removed from being returned by queries, but the graph structure's memory and storage footprint does not necessarily reflect those deletions until a maintenance operation, such as a full index rebuild, is performed", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "Routine maintenance for a vector-heavy table therefore typically includes periodically monitoring index bloat specifically, not just ordinary table bloat, and scheduling an index rebuild when that bloat becomes large enough to affect either query latency or memory footprint", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q053",
+    "query": "What are the differences between IVFFlat and HNSW in terms of build time, memory overhead, and recall, and when should each be preferred?",
+    "category": "decomposition",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| IVFFlat | ~4 minutes | ~1.1x | 0.85-0.92, depends on probe count | Degrades gradually until reindexed |", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| HNSW | ~22 minutes | ~1.6-2.0x | 0.93-0.97 | Graph updated in place, degrades much more slowly |", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "The production system uses an HNSW index specifically because its recall advantage and its graceful behavior under incremental inserts outweigh the higher build time and memory cost", "relevance": 2},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "the clusters are fixed at build time, so as new vectors are inserted into an existing IVFFlat index, the cluster boundaries no longer necessarily reflect the true shape of the updated data distribution until the index is rebuilt", "relevance": 2}
+    ],
+    "expected_subqueries": [
+      "What build time and memory overhead does IVFFlat have compared to HNSW?",
+      "What recall do IVFFlat and HNSW typically achieve?",
+      "When should IVFFlat be preferred over HNSW, or vice versa?"
+    ]
+  },
+  {
+    "id": "q054",
+    "query": "What are the main failure modes of query decomposition, and what mitigation does the system apply for each one?",
+    "category": "decomposition",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Over-decomposition occurs when a language model splits a question into more subqueries than the question's actual distinct information needs warrant", "relevance": 3},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Subquery drift occurs when a generated subquery gradually loses connection to the specific intent of the original query, phrasing something that is topically related but no longer actually addresses what the user asked", "relevance": 3},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Hallucinated subqueries are a more severe version of drift, where the decomposition model introduces an assumption, a named entity, or a sub-topic that was not actually present in or implied by the original query at all", "relevance": 3},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "a decomposition request that times out or returns an error must fall back to treating the original query as the only subquery, rather than failing the entire retrieval request", "relevance": 2},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Few-shot examples included in the prompt demonstrate the intended decomposition behavior for both decomposable and non-decomposable queries side by side", "relevance": 2}
+    ],
+    "expected_subqueries": [
+      "What failure modes affect query decomposition quality?",
+      "What mitigation is used against hallucinated or drifting subqueries?",
+      "What happens when the decomposition call itself fails or times out?"
+    ]
+  },
+  {
+    "id": "q055",
+    "query": "How does increasing the candidate pool size affect recall before reranking, what latency cost does that introduce, and how should that trade-off be measured?",
+    "category": "decomposition",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "| 20 | 32 ms | 0.47 |", "relevance": 2},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "| 100 | 145 ms | 0.69 |", "relevance": 3},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "candidate pool size sets an upper bound on recall, while reranking determines how well that bound is actually realized in the final top-K result", "relevance": 3},
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "one configuration achieves higher recall at the cost of higher latency, while another achieves lower latency at the cost of lower recall, which means the comparison is better framed as examining a trade-off curve across configurations", "relevance": 3}
+    ],
+    "expected_subqueries": [
+      "How does candidate pool size affect recall before reranking?",
+      "What latency cost does a larger candidate pool introduce during reranking?",
+      "How is the recall-versus-latency trade-off typically measured or compared?"
+    ]
+  },
+  {
+    "id": "q056",
+    "query": "What causes embedding collapse during contrastive training, and what negative-mining practice is meant to prevent it?",
+    "category": "decomposition",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Embedding collapse describes a failure mode where a poorly fine-tuned or over-trained model starts mapping a wide variety of distinct inputs to nearly the same region of vector space", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Hard negative mining instead deliberately selects negatives that are topically close to the true positive, for example by first running an existing retrieval system, whether a simpler keyword-based system or an earlier version of the embedding model itself, against the training query", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Random in-batch negatives, meaning simply treating every other passage that happens to be in the same training batch as a negative for a given query, are the cheapest negative source to construct", "relevance": 2}
+    ],
+    "expected_subqueries": [
+      "What is embedding collapse and what causes it?",
+      "What negative mining strategy helps prevent embedding collapse during contrastive training?"
+    ]
+  },
+  {
+    "id": "q057",
+    "query": "What is the dominant source of added latency when query decomposition is triggered, and how does that compare to the latency added by the extra vector searches themselves?",
+    "category": "decomposition",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "the dominant additional cost is not the extra embedding or vector search work from the additional subqueries, both of which remain individually fast and can be issued without", "relevance": 3},
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "Vector search (HNSW, candidate_limit=100) 18 ms 42 ms cosine distance operator", "relevance": 2}
+    ],
+    "expected_subqueries": [
+      "What is the dominant cause of added latency when query decomposition is triggered?",
+      "How much latency do the additional embedding and vector search calls from decomposition add on their own?"
+    ]
+  },
+  {
+    "id": "q058",
+    "query": "How does production telemetry distinguish an embedding provider failure from an index-related failure from a reranker failure, in terms of which latency signal moves?",
+    "category": "decomposition",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "an embedding provider failure typically manifests as an elevated error or timeout rate specifically on the embedding stage with vector search, merge, and reranking stages remaining unaffected because they are never reached", "relevance": 3},
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "An index-related failure, such as the query planner falling back to sequential scan due to a distance-operator mismatch or an index that failed to build correctly, typically manifests as a disproportionate increase in vector search stage latency specifically", "relevance": 3},
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "can be further isolated by checking whether rerank latency has increased at a fixed candidate pool size, which would point to a reranker-side regression specifically", "relevance": 3}
+    ],
+    "expected_subqueries": [
+      "What latency signature indicates an embedding provider failure?",
+      "What latency signature indicates an index-related failure?",
+      "What latency signature indicates a reranker failure or regression?"
+    ]
+  },
+  {
+    "id": "q059",
+    "query": "What are the differences between Recall@K, Precision@K, MRR, and Hit Rate@K in terms of what each one fails to capture?",
+    "category": "decomposition",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Recall@K measures, out of all the chunks that are genuinely relevant to a query anywhere in the corpus, what fraction of them appear within the top K results actually returned, which makes it a coverage metric", "relevance": 3},
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "Precision@K measures, out of the K results actually returned, what fraction of them are genuinely relevant, which makes it a purity metric", "relevance": 3},
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "a query with five equally relevant chunks scattered throughout the top ten results receives the exact same MRR contribution as a query with only one relevant chunk sitting at that same top position", "relevance": 3},
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "it answers the narrow but practically important question of whether a system fails a query entirely, surfacing no relevant evidence anywhere in the top K, which is a meaningfully different and often more severe failure", "relevance": 3}
+    ],
+    "expected_subqueries": [
+      "What does Recall@K measure and what is it blind to?",
+      "What does Precision@K measure and what is it blind to?",
+      "What does MRR capture and what does it miss?",
+      "What does Hit Rate@K capture and what does it miss?"
+    ]
+  },
+  {
+    "id": "q060",
+    "query": "According to the internal chunk-size study, what recall and precision were observed at a 500-token target compared to a 1200-token target?",
+    "category": "table_lookup",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "500 15 0.64 0.14 best balance observed", "relevance": 3},
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "1200 6 0.49 0.11 severe topic dilution per chunk", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q061",
+    "query": "What mean encode latency and relative recall did bge-large-en-v1.5 show compared to the production baseline model in the internal benchmark?",
+    "category": "table_lookup",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "| all-MiniLM-L6-v2 | 384 | 256 | 6.2 ms | 1.00 (baseline) |", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "| bge-large-en-v1.5 | 1024 | 512 | 27.4 ms | 1.15 |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q062",
+    "query": "At a candidate_limit of 100, what mean rerank latency and recall ceiling does the system achieve before reranking, according to the candidate pool table?",
+    "category": "table_lookup",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "| 100 | 145 ms | 0.69 |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q063",
+    "query": "What is the alert threshold and severity level listed for the reranker error rate metric?",
+    "category": "table_lookup",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "| Reranker error rate | below 0.5% | above 2% over 10 minutes | high |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q064",
+    "query": "What memory overhead and typical recall does the HNSW index carry compared to a plain sequential scan, according to the index comparison table?",
+    "category": "table_lookup",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| HNSW | ~22 minutes | ~1.6-2.0x | 0.93-0.97 | Graph updated in place, degrades much more slowly |", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| Sequential scan (no index) | N/A | None | 1.00 (exact) | Unaffected by inserts |", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q065",
+    "query": "Which candidate_limit and final_limit combination is described as favoring precision in the final returned set?",
+    "category": "table_lookup",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "| 100 | 5 | Wider recall net with a tightly curated final result; favors precision in the returned set |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q066",
+    "query": "What known limitation is listed for DOCX table detection in the format fidelity comparison table?",
+    "category": "table_lookup",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "DOCX (.docx) Native paragraph heading styles, reliable Structured table objects, re-serialized to the same pipe syntax Manually-formatted pseudo-headings without a real heading style are not recognized", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q067",
+    "query": "According to the metric summary table, what blind spot is listed for nDCG@K?",
+    "category": "table_lookup",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "| nDCG@K | Graded relevance discounted by rank position | Requires reliable, consistently applied graded judgments |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q068",
+    "query": "Roughly how much additional latency does the network round trip for query decomposition typically add?",
+    "category": "numerical",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "the network round trip to the OpenRouter-backed language model generating the subqueries in the first place, which typically adds on the order of 180 to 400 milliseconds depending on model load and subquery count", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q069",
+    "query": "How much longer does building an HNSW index take compared to IVFFlat on a one-million-vector corpus?",
+    "category": "numerical",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| IVFFlat | ~4 minutes | ~1.1x | 0.85-0.92, depends on probe count | Degrades gradually until reindexed |", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| HNSW | ~22 minutes | ~1.6-2.0x | 0.93-0.97 | Graph updated in place, degrades much more slowly |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q070",
+    "query": "What is the typical end-to-end p50 and p95 latency for a single query that doesn't trigger decomposition?",
+    "category": "numerical",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "Total end-to-end (no decomposition) 165 ms 310 ms single original query only", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q071",
+    "query": "At what sustained failure rate does the query decomposition language model trigger a monitoring alert?",
+    "category": "numerical",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "| Query decomposition LLM failure rate | below 1% | above 5% over 15 minutes | medium |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q072",
+    "query": "How much larger is the typical memory overhead of an HNSW index compared to IVFFlat, expressed as a multiple of raw vector size?",
+    "category": "numerical",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| IVFFlat | ~4 minutes | ~1.1x | 0.85-0.92, depends on probe count | Degrades gradually until reindexed |", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "| HNSW | ~22 minutes | ~1.6-2.0x | 0.93-0.97 | Graph updated in place, degrades much more slowly |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q073",
+    "query": "By roughly what proportion does relative recall improve when moving from the production baseline model to the 1024-dimension bge-large-en-v1.5 model?",
+    "category": "numerical",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "| all-MiniLM-L6-v2 | 384 | 256 | 6.2 ms | 1.00 (baseline) |", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "| bge-large-en-v1.5 | 1024 | 512 | 27.4 ms | 1.15 |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q074",
+    "query": "What sustained p95 latency, and for how long, triggers a high-severity end-to-end latency alert in production?",
+    "category": "numerical",
+    "difficulty": "easy",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "| p95 end-to-end latency | 150-350 ms | sustained above 600 ms for 5 minutes | high |", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q075",
+    "query": "What specific database-level operator does the production HNSW index actually use for comparing vectors?",
+    "category": "distractor_heavy",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "The production schema builds its HNSW index using the cosine distance operator `<=>`, consistent with the embedding model's unit-normalized output vectors", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q076",
+    "query": "Among pointwise, pairwise, and listwise approaches, which one does this production system's reranker actually use?",
+    "category": "distractor_heavy",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "The pointwise approach used in this system is chosen primarily for its operational simplicity and because each candidate's score can be computed independently", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q077",
+    "query": "If you raise candidate_limit, does that by itself guarantee the final returned results will be better, or does it only change what the reranker has to work with?",
+    "category": "distractor_heavy",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "candidate pool size sets an upper bound on recall, while reranking determines how well that bound is actually realized in the final top-K result", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q078",
+    "query": "If HNSW search never places a relevant chunk in the candidate pool to begin with, is the reranker able to recover it anyway?",
+    "category": "distractor_heavy",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "reranking can only ever reorder candidates that vector search actually surfaced into the candidate pool, so if HNSW search, whether due to the index's approximate nature or an insufficiently large `candidate_limit`, never places a genuinely relevant chunk inside the pool in the first place, no amount of reranking quality can recover that chunk", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "reranking can only reorder candidates that vector search already surfaced, which makes embedding model quality a hard ceiling on overall system recall", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q079",
+    "query": "Does setting a larger final_limit make the reranker itself more accurate, or does it just change how many already-ranked results get returned?",
+    "category": "distractor_heavy",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "A fixed top-K strategy, which is what this system uses, always returns exactly `final_limit` chunks regardless of how confidently the reranker scored them", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q080",
+    "query": "After an embedding model is fine-tuned on in-domain data, does the existing vector index immediately become usable with it, or is something else required first?",
+    "category": "distractor_heavy",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "every previously embedded chunk in the corpus must be re-embedded with the new model weights, because vectors produced by two different versions of a model, even versions that are closely related through fine-tuning, are not guaranteed to be comparable", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q081",
+    "query": "When a reranker is fine-tuned on in-domain data, does the corpus need to be re-embedded the same way an embedding model upgrade requires?",
+    "category": "distractor_heavy",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "Because a fine-tuned cross-encoder, unlike a fine-tuned embedding model, does not require the existing corpus to be re-embedded when it is deployed, a reranker fine-tuning update is operationally lighter weight", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q082",
+    "query": "How does the pipeline's handling of oversized tables relate to its decision not to use sliding-window overlap between chunks?",
+    "category": "cross_section",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "The five-hundred-token figure is a target rather than a hard ceiling, because some structural units, particularly tables and long list blocks, cannot always be split at an arbitrary token boundary without destroying their meaning", "relevance": 2},
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "The production pipeline does not use sliding-window overlap, relying instead on semantic grouping to place chunk boundaries at genuine topic shifts rather than at arbitrary token counts", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q083",
+    "query": "How does the query planner's fallback to sequential scan relate to the risk introduced by a distance-operator mismatch?",
+    "category": "cross_section",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "A sequential scan fallback is not itself an error condition and still returns exact, correct nearest-neighbor results, but it reintroduces the linear scaling behavior that the HNSW index exists specifically to avoid", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "if a query is ever issued using a distance operator different from the one the HNSW index was built against, whether due to a configuration error or a code path that was not updated consistently, the query will either silently fall back to a sequential scan", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q084",
+    "query": "How does the cap on the number of subqueries decomposition can produce relate to the latency cost described for decomposition overall?",
+    "category": "cross_section",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "capping decomposition at four subqueries in addition to the always-retained original query, which bounds both the number of independent vector searches a single request can trigger", "relevance": 3},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Decomposition's latency cost, dominated by the network round trip to the decomposition language model rather than by the additional retrieval work it causes, is paid on every query that is routed through decomposition regardless of whether that query actually benefits", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q085",
+    "query": "How does embedding drift monitoring relate to the canary deployment process used when upgrading the embedding model?",
+    "category": "cross_section",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "Embedding drift detection monitors whether the statistical distribution of newly computed query or chunk embeddings is changing over time relative to a reference distribution captured when the current embedding model was first deployed", "relevance": 2},
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "Canary validation for an embedding model upgrade specifically requires the canary's corpus to already be re-embedded under the new model version before the canary receives any live traffic", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q086",
+    "query": "How does table detection during document ingestion connect to how those same tables later get fragmented during chunking?",
+    "category": "cross_document",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "Table detection specifically looks for genuine GitHub-Flavored-Markdown pipe-table syntax, meaning a header row immediately followed by a dash-and-pipe separator row", "relevance": 3},
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "if a table's full markdown serialization exceeds the configured token budget for tables, the table is split into multiple fragments by rows, and the header row is repeated at the top of every fragment", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q087",
+    "query": "How does the lowest-distance-wins merge rule used for decomposition connect to the specific distance operator the production vector index is built with?",
+    "category": "cross_document",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "These independent candidate lists are then merged into a single candidate pool, deduplicated by chunk identifier so that a chunk retrieved by more than one subquery appears only once, with the lowest observed vector distance retained", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "The production schema builds its HNSW index using the cosine distance operator `<=>`, consistent with the embedding model's unit-normalized output vectors", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q088",
+    "query": "How does the production system's choice of HNSW over IVFFlat connect to how read replicas behave during ongoing document ingestion?",
+    "category": "cross_document",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "The production system uses an HNSW index specifically because its recall advantage and its graceful behavior under incremental inserts outweigh the higher build time and memory cost, given that the corpus receives ongoing document ingestion", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "a replica that is lagging behind the primary will serve stale results, including results that do not yet reflect a currently in-progress document ingestion", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q089",
+    "query": "How does the high-severity alert for reranker errors connect to why reranking is described as the dominant cost in the pipeline's latency budget?",
+    "category": "cross_document",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "| Reranker error rate | below 0.5% | above 2% over 10 minutes | high |", "relevance": 3},
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "Cross-encoder reranking (100 candidates) 140 ms 260 ms dominant cost in the pipeline", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q090",
+    "query": "How does the requirement to re-embed a corpus after an embedding model upgrade connect to how a canary deployment validates that upgrade before a full rollout?",
+    "category": "cross_document",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "every previously embedded chunk in the corpus must be re-embedded with the new model weights, because vectors produced by two different versions of a model, even versions that are closely related through fine-tuning, are not guaranteed to be comparable", "relevance": 2},
+      {"document_title": "Observability for Production Retrieval Systems", "content_fragment": "Canary validation for an embedding model upgrade specifically requires the canary's corpus to already be re-embedded under the new model version before the canary receives any live traffic", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q091",
+    "query": "How does a document's stable logical identifier across re-ingestion relate to why this benchmark anchors its gold evidence to text fragments instead of chunk IDs?",
+    "category": "cross_document",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "a logical document identifier that remains stable across subsequent re-ingestions of an updated version of that same source document, which allows the system to recognize that a newly ingested version supersedes a previous one logically", "relevance": 2},
+      {"document_title": "Evaluation Metrics and Benchmark Design for Retrieval Systems", "content_fragment": "because chunk identifiers are not stable across re-ingestion, as re-chunking a document can shift chunk boundaries even in unedited sections, a benchmark built around literal chunk identifiers would need to be entirely rebuilt every time its source corpus was re-ingested", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q092",
+    "query": "How does the pipeline's lack of a query-complexity classifier relate to why simple factual questions don't benefit from decomposition?",
+    "category": "cross_document",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "There is no automatic query-complexity classifier or router deciding whether a given query should be decomposed; the decomposition decision is made by the language model invoked at that stage for every query that reaches it", "relevance": 2},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Simple, direct factual questions asking for a single fact or definition generally do not benefit from decomposition, since there is only one coherent idea for a single embedding to represent in the first place", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q093",
+    "query": "How does the pipeline architecture's lack of a lexical fallback relate to the risk of missing an exact rare term during embedding-based retrieval?",
+    "category": "cross_document",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Architecture of a Production RAG Retrieval Pipeline", "content_fragment": "every candidate that reaches reranking was surfaced purely through dense vector similarity, which means a query whose correct answer depends on an exact rare term that the embedding model has no strong representation for has no lexical-match fallback", "relevance": 3},
+      {"document_title": "PostgreSQL and pgvector for Production Vector Search", "content_fragment": "There is no sparse or keyword-based retrieval mechanism layered alongside pgvector in this system, so any query whose correct answer depends primarily on an exact rare term", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q094",
+    "query": "What's the fundamental trade-off involved in increasing candidate_limit?",
+    "category": "tradeoff",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "candidate pool size sets an upper bound on recall, while reranking determines how well that bound is actually realized in the final top-K result", "relevance": 3},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "| 200 | 290 ms | 0.74 |", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q095",
+    "query": "What trade-off exists between using a fixed top-K result size and using a score-threshold cutoff for final results?",
+    "category": "tradeoff",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "A fixed top-K strategy, which is what this system uses, always returns exactly `final_limit` chunks regardless of how confidently the reranker scored them", "relevance": 3},
+      {"document_title": "Reranking and Candidate Pool Design", "content_fragment": "a single fixed threshold tuned against one query distribution may behave inconsistently across a broader and more varied range of queries than it was tuned against", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q096",
+    "query": "What latency-versus-storage trade-off comes from choosing a higher-dimensional embedding model?",
+    "category": "tradeoff",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "The relative recall gains from doubling or tripling embedding dimensionality are real but modest compared to the latency cost, which is why a 384-dimension model remains attractive", "relevance": 3},
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "Doubling the embedding dimensionality does not just slow down the encoder itself; it also roughly doubles the per-vector storage cost in the chunk embeddings table", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q097",
+    "query": "What trade-off does sliding-window chunk overlap introduce compared to not using overlap at all?",
+    "category": "tradeoff",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "it does so at the cost of inflating the total number of stored chunks and reintroducing a version of the near-duplicate content problem, where two chunks that mostly repeat each other's content can both surface as separate, redundant entries in a candidate pool", "relevance": 3},
+      {"document_title": "Chunking Strategies for Retrieval-Augmented Generation", "content_fragment": "The production pipeline does not use sliding-window overlap, relying instead on semantic grouping to place chunk boundaries at genuine topic shifts rather than at arbitrary token counts", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q098",
+    "query": "What happens during ingestion if a Markdown table is missing its required separator row?",
+    "category": "failure_mode",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "A malformed table, for example a Markdown table missing its required dash-and-pipe separator row immediately after the header row, is not recognized as a table at all by the detection logic, and is instead ingested as a sequence of ordinary paragraph lines", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q099",
+    "query": "Beyond being harder to construct, what specific risk does hard negative mining introduce into embedding model training?",
+    "category": "failure_mode",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Embedding Models for Semantic Retrieval", "content_fragment": "a passage retrieved as a plausible hard negative candidate may, on closer inspection, actually also be a valid answer to the query that was simply not labeled as such in the training data, and training a model to actively push away from a passage that is, in truth, relevant teaches it precisely the wrong lesson", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q100",
+    "query": "What can go wrong when a language model is asked to decompose a query that didn't actually need to be split?",
+    "category": "failure_mode",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Over-decomposition occurs when a language model splits a question into more subqueries than the question's actual distinct information needs warrant, which increases the raw number of vector searches performed", "relevance": 3},
+      {"document_title": "Query Decomposition in Practice", "content_fragment": "Subquery drift occurs when a generated subquery gradually loses connection to the specific intent of the original query, phrasing something that is topically related but no longer actually addresses what the user asked", "relevance": 2}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q101",
+    "query": "If a paragraph in a Word document is just manually bolded and enlarged rather than given an actual heading style, will the ingestion pipeline treat it as a section heading?",
+    "category": "failure_mode",
+    "difficulty": "medium",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "A paragraph that is manually formatted to visually resemble a heading, for example simply made bold and given a larger font size without actually being assigned a heading paragraph style, is not recognized as a heading", "relevance": 3}
+    ],
+    "expected_subqueries": []
+  },
+  {
+    "id": "q102",
+    "query": "How well do headings and tables survive ingestion depending on whether the source document is Markdown, DOCX, or PDF, and what's the main limitation for each?",
+    "category": "decomposition",
+    "difficulty": "hard",
+    "relevant_chunks": [
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "Markdown (.md) Native `#` syntax, reliable GFM pipe tables, reliable Depends on the author using correct pipe-and-separator syntax", "relevance": 3},
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "DOCX (.docx) Native paragraph heading styles, reliable Structured table objects, re-serialized to the same pipe syntax Manually-formatted pseudo-headings without a real heading style are not recognized", "relevance": 3},
+      {"document_title": "Document Ingestion and Structural Extraction for RAG", "content_fragment": "PDF (.pdf) Not detected; flat text only Not detected; flat text only Layout and tabular structure is lost, and multi-column text can be extracted out of reading order", "relevance": 3}
+    ],
+    "expected_subqueries": [
+      "How reliably are headings detected in Markdown, DOCX, and PDF documents?",
+      "How reliably are tables detected in Markdown, DOCX, and PDF documents?",
+      "What is the main known limitation for each source format?"
+    ]
+  }
+]
