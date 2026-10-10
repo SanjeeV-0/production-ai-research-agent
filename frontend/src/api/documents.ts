@@ -1,4 +1,5 @@
 import {
+  DocumentUploadResult,
   DocumentVersion,
   LogicalDocumentSummary,
   UploadDocumentMetadata,
@@ -146,12 +147,19 @@ export async function getDocumentVersions(
 
 /**
  * Uploads a file for ingestion via the backend's IngestionService.
- * Intended backend route: POST /documents (multipart/form-data)
+ * Backend route: POST /documents (multipart/form-data)
+ *
+ * The response's `outcome` tells the caller what actually happened:
+ * 'created' (a brand new logical document), 'duplicate' (the content
+ * already matched an existing version -- globally, regardless of filename/
+ * category/logical document -- no new document/version/chunks were
+ * created), or 'new_version' (a new revision of the explicitly targeted
+ * `metadata.logical_document_id`).
  */
 export async function uploadDocument(
   file: File,
   metadata: UploadDocumentMetadata = {}
-): Promise<DocumentVersion> {
+): Promise<DocumentUploadResult> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('title', metadata.title?.trim() || file.name);
@@ -169,7 +177,7 @@ export async function uploadDocument(
       headers: { Accept: 'application/json' },
       body: formData,
     });
-    return await handleResponse<DocumentVersion>(response);
+    return await handleResponse<DocumentUploadResult>(response);
   } catch (error) {
     return wrapError(error);
   }

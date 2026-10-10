@@ -30,13 +30,13 @@ async def test_ingest_file_persists_pages(tmp_path: Path) -> None:
             file_storage=file_storage,
         )
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="RAG Research",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         await session.commit()
 

@@ -95,14 +95,14 @@ async def ensure_evaluation_corpus(session: AsyncSession) -> Document:
         document_path = Path(tmp_dir) / "retrieval_evaluation_corpus.md"
         document_path.write_text(EVALUATION_CORPUS_MARKDOWN, encoding="utf-8")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Retrieval Evaluation Corpus",
             document_type="evaluation",
             logical_document_id=EVALUATION_CORPUS_LOGICAL_DOCUMENT_ID,
             source=EVALUATION_CORPUS_SOURCE,
-        )
+        )).document
 
     await session.commit()
 

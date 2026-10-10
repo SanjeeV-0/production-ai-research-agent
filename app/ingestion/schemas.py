@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,6 +44,42 @@ class DocumentVersionResponse(BaseModel):
     processing_completed_at: datetime | None
     failed_at: datetime | None
     last_error: str | None
+
+
+class IngestOutcome(StrEnum):
+    """What `POST /documents` actually did with a given upload.
+
+    CREATED: no matching normalized content existed anywhere -- a brand new
+    logical document (server-generated ID) and its version 1 were created.
+
+    DUPLICATE: the upload's normalized extracted-text content already
+    matched an existing version (globally, regardless of which logical
+    document it belongs to, its filename, or its category) -- no new
+    logical document, version, section, chunk, or embedding was created.
+    `version` in the response is the pre-existing matched version, and
+    `updated_metadata_fields` lists which of its fields were updated from
+    the submitted (non-empty) metadata, if any.
+
+    NEW_VERSION: the upload was submitted against an explicitly chosen
+    existing `logical_document_id` and its content did not already match
+    any existing version under that same logical document -- a new version
+    row was created under it.
+    """
+
+    CREATED = "created"
+    DUPLICATE = "duplicate"
+    NEW_VERSION = "new_version"
+
+
+class DocumentUploadResponse(BaseModel):
+    """Response shape for `POST /documents`, replacing the previous bare
+    `DocumentVersionResponse` so callers can distinguish a true new upload
+    from a detected duplicate or a new version of an existing document --
+    see `IngestOutcome` for exactly what each value means."""
+
+    outcome: IngestOutcome
+    version: DocumentVersionResponse
+    updated_metadata_fields: list[str] = Field(default_factory=list)
 
 
 class LogicalDocumentResponse(BaseModel):

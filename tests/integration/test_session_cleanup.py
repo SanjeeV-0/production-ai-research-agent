@@ -22,12 +22,14 @@ from sqlalchemy import select
 from app.config.settings import get_settings
 from app.core.database import async_session_factory
 from app.core.models import (
+    BlobStatus,
     ChunkPageMap,
     Document,
     DocumentChunk,
     DocumentPage,
     DocumentSection,
     DocumentStatus,
+    FileBlob,
     StoredFile,
 )
 from tests.conftest import cleanup_document_test_data
@@ -49,9 +51,10 @@ async def test_cleanup_removes_all_document_lifecycle_rows_and_files() -> None:
     document_id = uuid4()
     logical_document_id = uuid4()
     stored_file_id = uuid4()
+    blob_content_hash = f"session-cleanup-blob-{uuid4()}"
 
     storage_root = Path(get_settings().storage_root)
-    storage_key = f"documents/{logical_document_id}/{document_id}/{stored_file_id}"
+    storage_key = f"blobs/{blob_content_hash[:2]}/{blob_content_hash}"
     file_path = storage_root / storage_key
     file_content = b"session cleanup helper test fixture"
     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,11 +75,20 @@ async def test_cleanup_removes_all_document_lifecycle_rows_and_files() -> None:
         session.add(document)
         await session.flush()
 
+        blob = FileBlob(
+            content_hash=blob_content_hash,
+            storage_key=storage_key,
+            size_bytes=len(file_content),
+            status=BlobStatus.READY,
+        )
+        session.add(blob)
+        await session.flush()
+
         stored_file = StoredFile(
             id=stored_file_id,
             document_id=document.id,
             original_filename="session-cleanup-test.md",
-            content_hash=f"file-{uuid4()}",
+            content_hash=blob_content_hash,
             size_bytes=len(file_content),
             storage_key=storage_key,
         )
@@ -128,6 +140,7 @@ async def test_cleanup_removes_all_document_lifecycle_rows_and_files() -> None:
     async with async_session_factory() as verification_session:
         assert await verification_session.get(Document, document_id) is None
         assert await verification_session.get(StoredFile, stored_file_id) is None
+        assert await verification_session.get(FileBlob, blob_content_hash) is None
         assert await verification_session.get(DocumentPage, page_id) is None
         assert await verification_session.get(DocumentSection, section_id) is None
         assert await verification_session.get(DocumentChunk, chunk_id) is None

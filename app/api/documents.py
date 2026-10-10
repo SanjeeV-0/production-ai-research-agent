@@ -34,7 +34,12 @@ from app.core.services.document import DocumentService
 from app.core.services.document_deletion import DocumentDeletionService
 from app.ingestion.loaders.base import DocumentLoader
 from app.ingestion.loaders.resolver import resolve_loader_for_filename
-from app.ingestion.schemas import DocumentVersionResponse, LogicalDocumentResponse
+from app.ingestion.schemas import (
+    DocumentUploadResponse,
+    DocumentVersionResponse,
+    IngestOutcome,
+    LogicalDocumentResponse,
+)
 from app.ingestion.service import IngestionService
 
 router = APIRouter(
@@ -57,7 +62,7 @@ def _resolve_loader(filename: str) -> DocumentLoader:
 
 @router.post(
     "",
-    response_model=DocumentVersionResponse,
+    response_model=DocumentUploadResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_document(
@@ -70,12 +75,18 @@ async def upload_document(
     title: Annotated[str | None, Form(max_length=500)] = None,
     source: Annotated[str | None, Form(max_length=1000)] = None,
     logical_document_id: Annotated[UUID | None, Form()] = None,
-) -> DocumentVersionResponse:
+) -> DocumentUploadResponse:
     """Upload a file and ingest it via the existing IngestionService.
 
     This is a synchronous, in-request operation -- it mirrors the existing
     `IngestionService.ingest_file` flow exactly and does not introduce any
     background job, queue, or async task semantics.
+
+    The response's `outcome` distinguishes a genuinely new document
+    (`created`), a detected normalized-content duplicate -- global,
+    regardless of filename/category/logical document (`duplicate`), or a
+    new revision of the explicitly targeted `logical_document_id`
+    (`new_version`). See `app.ingestion.schemas.IngestOutcome`.
     """
 
     content = await file.read()
@@ -102,7 +113,7 @@ async def upload_document(
             temporary_file.write(content)
             temporary_path = Path(temporary_file.name)
 
-        document: Document = await ingestion_service.ingest_file(
+        result = await ingestion_service.ingest_file(
             path=temporary_path,
             loader=loader,
             title=resolved_title,
@@ -111,6 +122,11 @@ async def upload_document(
             source=source,
             original_filename=filename,
         )
+
+        document: Document = result.document
+        outcome = result.outcome
+        updated_metadata_fields = result.updated_metadata_fields
+
     except HTTPException:
         raise
     except Exception as exc:
@@ -119,7 +135,11 @@ async def upload_document(
         # the exception as `.failed_document`. A FAILED version is a normal,
         # trackable, retry-able lifecycle outcome -- not a request error --
         # so it is reported like any other successfully created version
-        # rather than as a 422/500.
+        # rather than as a 422/500. A FAILED version is, by construction,
+        # never a `duplicate` outcome (the duplicate short-circuit in
+        # IngestionService never reaches the processing step that can
+        # fail), so the outcome here is determined solely by whether the
+        # caller targeted an existing logical document.
         document = getattr(exc, "failed_document", None)
 
         if document is None:
@@ -128,11 +148,20 @@ async def upload_document(
             # fabricated as a success and is not mislabeled as a 422
             # validation error either.
             raise
+
+        outcome = (
+            IngestOutcome.NEW_VERSION if logical_document_id is not None else IngestOutcome.CREATED
+        )
+        updated_metadata_fields = []
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
 
-    return DocumentVersionResponse.model_validate(document)
+    return DocumentUploadResponse(
+        outcome=outcome,
+        version=DocumentVersionResponse.model_validate(document),
+        updated_metadata_fields=updated_metadata_fields,
+    )
 
 
 @router.get(

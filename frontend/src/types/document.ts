@@ -42,3 +42,17 @@ export interface UploadDocumentMetadata {
   // logical document instead of starting a brand new one.
   logical_document_id?: string;
 }
+
+// Mirrors app.ingestion.schemas.IngestOutcome. Distinguishes a genuinely new
+// document from a detected normalized-content duplicate (global -- matched
+// regardless of filename, category, or which logical document it belongs
+// to) from a new revision of an explicitly targeted existing document.
+export type UploadOutcome = 'created' | 'duplicate' | 'new_version';
+
+// Mirrors app.ingestion.schemas.DocumentUploadResponse -- the response shape
+// for POST /documents.
+export interface DocumentUploadResult {
+  outcome: UploadOutcome;
+  version: DocumentVersion;
+  updated_metadata_fields: string[];
+}

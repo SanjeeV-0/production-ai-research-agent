@@ -8,12 +8,14 @@ from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.core.models import (
+    BlobStatus,
     ChunkPageMap,
     Document,
     DocumentChunk,
     DocumentPage,
     DocumentSection,
     DocumentStatus,
+    FileBlob,
     StoredFile,
 )
 from app.embeddings.testing import DeterministicEmbeddingProvider
@@ -98,7 +100,7 @@ async def test_ingestion_service_deduplicates_content(
 
         logical_document_id = uuid4()
 
-        first_document = await service.ingest_file(
+        first_result = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Test Research Paper",
@@ -106,10 +108,9 @@ async def test_ingestion_service_deduplicates_content(
             source="integration-test",
             logical_document_id=logical_document_id,
         )
+        first_document = first_result.document
 
-        await session.commit()
-
-        second_document = await service.ingest_file(
+        second_result = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Test Research Paper",
@@ -117,9 +118,10 @@ async def test_ingestion_service_deduplicates_content(
             source="integration-test",
             logical_document_id=logical_document_id,
         )
+        second_document = second_result.document
 
-        await session.commit()
-
+        assert first_result.outcome == "new_version"
+        assert second_result.outcome == "duplicate"
         assert first_document.id == second_document.id
 
         stored_file = await get_stored_file(
@@ -154,14 +156,16 @@ async def test_ingestion_service_marks_document_ready(
             file_storage=file_storage,
         )
 
-        document = await service.ingest_file(
+        result = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Test Research Paper",
             document_type="research_paper",
             source="integration-test",
         )
+        document = result.document
 
+        assert result.outcome == "created"
         assert document.status == DocumentStatus.READY
         assert document.processing_attempt == 1
         assert document.processing_started_at is not None
@@ -270,13 +274,14 @@ async def test_ingestion_preserves_original_file_bytes(
             file_storage=file_storage,
         )
 
-        document = await service.ingest_file(
+        result = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Original Bytes Test",
             document_type="research_paper",
             source="integration-test",
         )
+        document = result.document
 
         stored_file = await get_stored_file(
             session,
@@ -313,30 +318,29 @@ async def test_ingestion_persists_correct_stored_file_metadata(
             file_storage=file_storage,
         )
 
-        document = await service.ingest_file(
+        result = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Stored File Metadata Test",
             document_type="research_paper",
             source="integration-test",
         )
+        document = result.document
 
         stored_file = await get_stored_file(
             session,
             document.id,
         )
 
+        expected_hash = hashlib.sha256(original_bytes).hexdigest()
+
         assert stored_file.original_filename == "example.txt"
-        assert (
-            stored_file.content_hash
-            == hashlib.sha256(
-                original_bytes,
-            ).hexdigest()
-        )
+        assert stored_file.content_hash == expected_hash
         assert stored_file.size_bytes == len(original_bytes)
-        assert stored_file.storage_key == (
-            f"documents/{document.logical_document_id}/{document.id}/{stored_file.id}"
-        )
+        # Storage key is now content-addressed (shared-blob model), not
+        # derived from this version's UUIDs -- see
+        # app.storage.keys.build_blob_storage_key.
+        assert stored_file.storage_key == f"blobs/{expected_hash[:2]}/{expected_hash}"
 
         await session.delete(stored_file)
         await session.delete(document)
@@ -411,9 +415,22 @@ async def test_failed_ingestion_retains_original_file(
 
 
 @pytest.mark.asyncio
-async def test_ingestion_deletes_stored_file_when_initial_commit_fails(
+async def test_ingestion_never_deletes_blob_when_stored_file_commit_fails(
     tmp_path: Path,
 ) -> None:
+    """Blob writes are now a SHARED resource (see `app.ingestion.
+    blob_service.BlobService`), not owned by any one version -- so unlike
+    the pre-blob-model behavior (which deleted the just-written file on any
+    downstream commit failure), a failure committing THIS version's
+    `StoredFile` reference must never delete the blob's physical bytes: it
+    might already be a reference target for another version/request. The
+    document-creation and blob-publish/ready commits are allowed to succeed
+    (side_effect only fails the 4th commit -- the StoredFile reference
+    commit); the real `session.rollback()` that follows means none of this
+    session's work is actually durable in Postgres afterward, so this test
+    asserts only the file-storage-level contract, not persisted DB state.
+    """
+
     document_path = tmp_path / "commit-failure.md"
     document_path.write_text(
         f"# Commit Failure\n\nContent {uuid4()}",
@@ -425,7 +442,12 @@ async def test_ingestion_deletes_stored_file_when_initial_commit_fails(
     async with async_session_factory() as session:
         original_commit = session.commit
         commit_mock = AsyncMock(
-            side_effect=RuntimeError("database commit failure"),
+            side_effect=[
+                None,  # document creation commit
+                None,  # blob PENDING publish commit
+                None,  # blob READY commit
+                RuntimeError("database commit failure"),  # StoredFile reference commit
+            ],
         )
         session.commit = commit_mock
 
@@ -450,10 +472,11 @@ async def test_ingestion_deletes_stored_file_when_initial_commit_fails(
             )
 
         assert len(file_storage.stored_keys) == 1
-        assert file_storage.deleted_keys == file_storage.stored_keys
-        assert not await file_storage.exists(file_storage.stored_keys[0])
+        assert file_storage.deleted_keys == []
+        assert await file_storage.exists(file_storage.stored_keys[0])
 
         session.commit = original_commit
+        await session.rollback()
 
 
 @pytest.mark.asyncio
@@ -483,13 +506,14 @@ Evaluation compares retrieval quality across different search strategies.
             file_storage=file_storage,
         )
 
-        document = await service.ingest_file(
+        result = await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Headingless Document",
             document_type="research_paper",
             source="integration-test",
         )
+        document = result.document
 
         assert document.status == DocumentStatus.READY
 
@@ -763,8 +787,10 @@ async def test_failed_retry_does_not_affect_current_ready_version(
         current_document_id = current_document.id
         failed_document_id = failed_document.id
 
-        # Give the failed version an existing stored file.
-        storage_key = f"documents/{logical_document_id}/{failed_document_id}/{uuid4()}"
+        # Give the failed version an existing stored file (blob + reference
+        # -- StoredFile.content_hash now has a foreign key into file_blobs).
+        content_hash = f"stored-file-test-{uuid4()}"
+        storage_key = f"blobs/{content_hash[:2]}/{content_hash}"
 
         file_bytes = b"# Failed Version\n\nretry content"
 
@@ -775,10 +801,19 @@ async def test_failed_retry_does_not_affect_current_ready_version(
             storage_key,
         )
 
+        blob = FileBlob(
+            content_hash=content_hash,
+            storage_key=storage_key,
+            size_bytes=len(file_bytes),
+            status=BlobStatus.READY,
+        )
+        session.add(blob)
+        await session.flush()
+
         stored_file = StoredFile(
             document_id=failed_document_id,
             original_filename="failed.md",
-            content_hash="stored-file-test",
+            content_hash=content_hash,
             size_bytes=len(file_bytes),
             storage_key=storage_key,
         )

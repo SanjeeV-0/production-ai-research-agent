@@ -15,7 +15,7 @@ async def test_ingest_document_deduplicates_content() -> None:
         authors="Test Author",
         source="integration-test",
         document_type="research_paper",
-        content="This is   a test research document.",
+        content=f"This is a unique test research document {uuid4()}.",
     )
 
     async with async_session_factory() as session:
@@ -23,22 +23,18 @@ async def test_ingest_document_deduplicates_content() -> None:
 
         logical_document_id = uuid4()
 
-        first_document, first_created = await service.ingest_document(
+        first_document, first_match = await service.ingest_as_new_version(
+            logical_document_id,
             document_input,
-            logical_document_id=logical_document_id,
         )
 
-        await session.commit()
-
-        second_document, second_created = await service.ingest_document(
+        second_document, second_match = await service.ingest_as_new_version(
+            logical_document_id,
             document_input,
-            logical_document_id=logical_document_id,
         )
 
-        await session.commit()
-
-        assert first_created is True
-        assert second_created is False
+        assert first_match.matched is False
+        assert second_match.matched is True
         assert first_document.id == second_document.id
 
         await session.delete(first_document)
@@ -55,7 +51,7 @@ async def test_changed_content_creates_new_version() -> None:
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Original document content.",
+        content=f"Original document content {uuid4()}.",
     )
 
     second_input = DocumentInput(
@@ -64,30 +60,28 @@ async def test_changed_content_creates_new_version() -> None:
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Updated document content.",
+        content=f"Updated document content {uuid4()}.",
     )
 
     async with async_session_factory() as session:
         service = DocumentService(session)
 
-        first_document, first_created = await service.ingest_document(
+        first_document, first_match = await service.ingest_as_new_version(
+            logical_document_id,
             first_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
         await service.mark_processing(first_document)
         await service.mark_ready(first_document)
         await session.commit()
 
-        second_document, second_created = await service.ingest_document(
+        second_document, second_match = await service.ingest_as_new_version(
+            logical_document_id,
             second_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
-        assert first_created is True
-        assert second_created is True
+        assert first_match.matched is False
+        assert second_match.matched is False
 
         assert second_document.id != first_document.id
         assert second_document.logical_document_id == logical_document_id
@@ -95,6 +89,9 @@ async def test_changed_content_creates_new_version() -> None:
         assert first_document.version_number == 1
         assert second_document.version_number == 2
 
+        # First version reaching READY is auto-promoted (there was no prior
+        # current version); a brand new, not-yet-processed second version
+        # never touches is_current.
         assert first_document.is_current is True
         assert second_document.is_current is False
 
@@ -106,7 +103,11 @@ async def test_changed_content_creates_new_version() -> None:
 
 
 @pytest.mark.asyncio
-async def test_new_ready_version_replaces_current_version() -> None:
+async def test_ready_second_version_remains_non_current_until_promoted() -> None:
+    """Approved behavior: only a logical document's very first version is
+    auto-promoted on READY. A later version reaching READY must stay
+    non-current until the user explicitly calls `set_current`."""
+
     logical_document_id = uuid4()
 
     first_input = DocumentInput(
@@ -115,7 +116,7 @@ async def test_new_ready_version_replaces_current_version() -> None:
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Original document content.",
+        content=f"Original document content {uuid4()}.",
     )
 
     second_input = DocumentInput(
@@ -124,29 +125,27 @@ async def test_new_ready_version_replaces_current_version() -> None:
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Updated document content.",
+        content=f"Updated document content {uuid4()}.",
     )
 
     async with async_session_factory() as session:
         service = DocumentService(session)
 
-        first_document, _ = await service.ingest_document(
+        first_document, _ = await service.ingest_as_new_version(
+            logical_document_id,
             first_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
         await service.mark_processing(first_document)
         await service.mark_ready(first_document)
         await session.commit()
 
-        second_document, second_created = await service.ingest_document(
+        second_document, second_match = await service.ingest_as_new_version(
+            logical_document_id,
             second_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
-        assert second_created is True
+        assert second_match.matched is False
         assert first_document.is_current is True
         assert second_document.is_current is False
 
@@ -156,11 +155,19 @@ async def test_new_ready_version_replaces_current_version() -> None:
         await service.mark_ready(second_document)
         await session.commit()
 
-        assert first_document.is_current is False
-        assert second_document.is_current is True
+        # Reaching READY alone must NOT promote a second-or-later version.
+        assert first_document.is_current is True
+        assert second_document.is_current is False
 
         assert first_document.status == DocumentStatus.READY
         assert second_document.status == DocumentStatus.READY
+
+        # The user must explicitly promote it.
+        await service.set_current(second_document)
+        await session.commit()
+
+        assert first_document.is_current is False
+        assert second_document.is_current is True
 
         await session.delete(second_document)
         await session.delete(first_document)
@@ -177,7 +184,7 @@ async def test_failed_new_version_preserves_current_version() -> None:
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Original document content.",
+        content=f"Original document content {uuid4()}.",
     )
 
     second_input = DocumentInput(
@@ -186,29 +193,27 @@ async def test_failed_new_version_preserves_current_version() -> None:
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Updated document content.",
+        content=f"Updated document content {uuid4()}.",
     )
 
     async with async_session_factory() as session:
         service = DocumentService(session)
 
-        first_document, _ = await service.ingest_document(
+        first_document, _ = await service.ingest_as_new_version(
+            logical_document_id,
             first_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
         await service.mark_processing(first_document)
         await service.mark_ready(first_document)
         await session.commit()
 
-        second_document, second_created = await service.ingest_document(
+        second_document, second_match = await service.ingest_as_new_version(
+            logical_document_id,
             second_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
-        assert second_created is True
+        assert second_match.matched is False
         assert first_document.is_current is True
         assert second_document.is_current is False
 
@@ -243,19 +248,18 @@ async def test_failed_version_can_be_retried_without_creating_new_version() -> N
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Document content that initially fails.",
+        content=f"Document content that initially fails {uuid4()}.",
     )
 
     async with async_session_factory() as session:
         service = DocumentService(session)
 
-        document, created = await service.ingest_document(
+        document, match = await service.ingest_as_new_version(
+            logical_document_id,
             document_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
-        assert created is True
+        assert match.matched is False
         assert document.version_number == 1
         assert document.processing_attempt == 0
 
@@ -275,13 +279,12 @@ async def test_failed_version_can_be_retried_without_creating_new_version() -> N
         assert document.is_current is False
         assert document.processing_attempt == 1
 
-        retried_document, retry_created = await service.ingest_document(
+        retried_document, retry_match = await service.ingest_as_new_version(
+            logical_document_id,
             document_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
-        assert retry_created is False
+        assert retry_match.matched is True
         assert retried_document.id == document.id
         assert retried_document.version_number == 1
         assert retried_document.logical_document_id == logical_document_id
@@ -300,7 +303,7 @@ async def test_processing_version_is_reused_without_creating_new_version() -> No
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Original document content.",
+        content=f"Original document content {uuid4()}.",
     )
 
     second_input = DocumentInput(
@@ -309,29 +312,27 @@ async def test_processing_version_is_reused_without_creating_new_version() -> No
         source="integration-test",
         publication_date=None,
         document_type="research_paper",
-        content="Updated document content.",
+        content=f"Updated document content {uuid4()}.",
     )
 
     async with async_session_factory() as session:
         service = DocumentService(session)
 
-        first_document, _ = await service.ingest_document(
+        first_document, _ = await service.ingest_as_new_version(
+            logical_document_id,
             first_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
         await service.mark_processing(first_document)
         await service.mark_ready(first_document)
         await session.commit()
 
-        second_document, second_created = await service.ingest_document(
+        second_document, second_match = await service.ingest_as_new_version(
+            logical_document_id,
             second_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
-        assert second_created is True
+        assert second_match.matched is False
         assert second_document.version_number == 2
         assert second_document.is_current is False
 
@@ -341,13 +342,12 @@ async def test_processing_version_is_reused_without_creating_new_version() -> No
         assert second_document.status == DocumentStatus.PROCESSING
         assert second_document.processing_attempt == 1
 
-        duplicate_document, duplicate_created = await service.ingest_document(
+        duplicate_document, duplicate_match = await service.ingest_as_new_version(
+            logical_document_id,
             second_input,
-            logical_document_id=logical_document_id,
         )
-        await session.commit()
 
-        assert duplicate_created is False
+        assert duplicate_match.matched is True
         assert duplicate_document.id == second_document.id
         assert duplicate_document.version_number == 2
         assert duplicate_document.status == DocumentStatus.PROCESSING

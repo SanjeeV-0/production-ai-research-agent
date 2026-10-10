@@ -5,9 +5,13 @@ migrations rather than by anything visible on these model classes --
 notably the partial unique index that guarantees at most one `is_current`
 row per `logical_document_id`
 (`alembic/versions/9f0853bbd01b_add_document_versioning.py`,
-`ix_documents_current_version ... WHERE is_current = true`) and the
-`uq_documents_logical_content_hash` unique constraint that backs ingestion
-idempotency. Always cross-check `alembic/versions/` when reasoning about
+`ix_documents_current_version ... WHERE is_current = true`), the
+`uq_documents_content_hash` GLOBAL unique constraint on `documents.content_hash`
+(`alembic/versions/<global_content_hash_revision>.py`, replacing the earlier
+per-logical-document `uq_documents_logical_content_hash`) that backs global
+duplicate-content detection, and `uq_documents_logical_version` (unique on
+`(logical_document_id, version_number)`) that backs safe concurrent version
+allocation. Always cross-check `alembic/versions/` when reasoning about
 what this schema actually guarantees.
 """
 
@@ -29,6 +33,21 @@ class DocumentStatus(StrEnum):
     PROCESSING = "PROCESSING"
     READY = "READY"
     FAILED = "FAILED"
+
+
+class BlobStatus(StrEnum):
+    """Lifecycle of a physical, content-addressed blob (`FileBlob`).
+
+    PENDING means a blob row was reserved (via `INSERT ... ON CONFLICT DO
+    NOTHING`) but the physical bytes may not be durably written yet -- a
+    PENDING row must never be treated as a usable, reusable blob. READY
+    means the physical write completed and the blob is safe to reference or
+    reuse. See `app.ingestion.blob_service.BlobService` for the state
+    machine that creates/transitions/reconciles these rows.
+    """
+
+    PENDING = "PENDING"
+    READY = "READY"
 
 
 class Base(DeclarativeBase):
@@ -174,11 +193,75 @@ class Document(Base):
     )
 
 
+class FileBlob(Base):
+    """One canonical physical blob per RAW-BYTE content hash -- the shared
+    storage unit that lets multiple `StoredFile` rows (and therefore
+    multiple document versions, across different logical documents) point
+    at the same physical bytes without storing them twice.
+
+    `content_hash` (sha256 of raw uploaded bytes) is both the primary key
+    and the sole concurrency-coordination point: `FileBlobRepository.
+    try_create_pending` uses `INSERT ... ON CONFLICT (content_hash) DO
+    NOTHING` so two concurrent uploads of identical bytes can never create
+    two rows -- exactly one caller "wins" blob creation, the other reuses
+    the row the winner created (see `app.ingestion.blob_service.BlobService`).
+
+    `status` starts PENDING at creation and is only ever read as "a usable
+    blob" once it is READY -- see `BlobStatus` for why PENDING must never be
+    treated as reusable without a self-healing check.
+    """
+
+    __tablename__ = "file_blobs"
+
+    content_hash: Mapped[str] = mapped_column(
+        String(64),
+        primary_key=True,
+    )
+
+    storage_key: Mapped[str] = mapped_column(
+        String(1000),
+        nullable=False,
+        unique=True,
+    )
+
+    size_bytes: Mapped[int] = mapped_column(
+        nullable=False,
+    )
+
+    status: Mapped[BlobStatus] = mapped_column(
+        String(20),
+        nullable=False,
+        default=BlobStatus.PENDING,
+        index=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    ready_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    stored_files: Mapped[list["StoredFile"]] = relationship(
+        back_populates="blob",
+    )
+
+
 class StoredFile(Base):
-    """Metadata for the ONE physical file backing a `Document` version
-    (`document_id` is unique -- a version has at most one StoredFile, ever).
+    """One reference, per `Document` version, to a shared `FileBlob`
+    (`document_id` is unique -- a version has at most one StoredFile, ever,
+    but the `FileBlob` it points to may be referenced by many StoredFile
+    rows belonging to other versions/logical documents entirely).
+
     The actual bytes live outside the database, via `app.storage.FileStorage`
-    at `storage_key`; this row is how the application finds them again.
+    at `FileBlob.storage_key`; this row (plus its `blob` FK) is how the
+    application finds them again and how reference-counted blob cleanup
+    (`app.core.services.document_deletion.DocumentDeletionService`) decides
+    whether a blob is still in use by any other version before deleting it.
     """
 
     __tablename__ = "stored_files"
@@ -206,8 +289,14 @@ class StoredFile(Base):
         nullable=False,
     )
 
+    # References the shared FileBlob holding the actual bytes. NO
+    # `ondelete="CASCADE"` here either -- a StoredFile must never be able to
+    # cascade-delete the blob it shares with other versions; blob deletion is
+    # its own explicit, reference-counted operation (see
+    # DocumentDeletionService._maybe_delete_blob).
     content_hash: Mapped[str] = mapped_column(
         String(64),
+        ForeignKey("file_blobs.content_hash"),
         nullable=False,
         index=True,
     )
@@ -216,16 +305,23 @@ class StoredFile(Base):
         nullable=False,
     )
 
+    # Denormalized copy of FileBlob.storage_key at the time this reference
+    # was created, kept only so existing read paths that expect
+    # StoredFile.storage_key keep working unchanged. The FileBlob row (via
+    # `content_hash`) remains the authoritative owner of the physical path.
     storage_key: Mapped[str] = mapped_column(
         String(1000),
         nullable=False,
-        unique=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(UTC),
+    )
+
+    blob: Mapped["FileBlob"] = relationship(
+        back_populates="stored_files",
     )
 
 

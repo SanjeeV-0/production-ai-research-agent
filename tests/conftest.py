@@ -32,9 +32,12 @@ async def cleanup_document_test_data() -> None:
     removed explicitly before `Document`; `ChunkPageMap`, `DocumentChunk`,
     `DocumentSection`, and `DocumentPage` do have `ON DELETE CASCADE` from
     `Document`, but are deleted explicitly here too for clarity and
-    defensiveness. A bulk `DELETE` that matches zero rows is a successful
-    no-op, so this is safe to call unconditionally, including when there is
-    nothing to clean.
+    defensiveness. `FileBlob` likewise has no cascade from `StoredFile` (a
+    blob is a SHARED resource, never owned by one reference -- see
+    `app.ingestion.blob_service`), so it is deleted explicitly after every
+    `StoredFile` row that could reference it is already gone. A bulk
+    `DELETE` that matches zero rows is a successful no-op, so this is safe
+    to call unconditionally, including when there is nothing to clean.
     """
 
     # Imported lazily (inside the function, not at module import time) so
@@ -48,6 +51,7 @@ async def cleanup_document_test_data() -> None:
         DocumentChunk,
         DocumentPage,
         DocumentSection,
+        FileBlob,
         StoredFile,
     )
 
@@ -57,6 +61,7 @@ async def cleanup_document_test_data() -> None:
         await session.execute(delete(DocumentSection))
         await session.execute(delete(DocumentPage))
         await session.execute(delete(StoredFile))
+        await session.execute(delete(FileBlob))
         await session.execute(delete(Document))
         await session.commit()
 

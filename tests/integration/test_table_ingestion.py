@@ -62,13 +62,13 @@ async def test_document_containing_only_a_table_ingests_as_ready(tmp_path: Path)
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Table Only",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         assert document.status == DocumentStatus.READY
 
@@ -110,13 +110,13 @@ async def test_document_with_text_and_table_produces_both_chunk_kinds(tmp_path: 
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Mixed Content",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         assert document.status == DocumentStatus.READY
 
@@ -160,13 +160,13 @@ async def test_multiple_tables_persist_with_distinct_table_ids(tmp_path: Path) -
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Multiple Tables",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         chunk_result = await session.execute(
             select(DocumentChunk).where(DocumentChunk.document_id == document.id)
@@ -202,13 +202,13 @@ async def test_table_chunk_preserves_section_and_page_provenance(tmp_path: Path)
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Provenance",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         section_result = await session.execute(
             select(DocumentSection).where(
@@ -254,13 +254,13 @@ async def test_headingless_table_has_no_fabricated_section(tmp_path: Path) -> No
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Headingless Table",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         section_result = await session.execute(
             select(DocumentSection).where(DocumentSection.document_id == document.id)
@@ -304,13 +304,13 @@ async def test_docx_table_ingests_through_the_same_pipeline(tmp_path: Path) -> N
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=docx_path,
             loader=DocxLoader(),
             title="Docx Table",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         assert document.status == DocumentStatus.READY
 
@@ -352,13 +352,13 @@ async def test_large_table_fragments_into_multiple_chunks_with_shared_table_id(
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Large Table",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         assert document.status == DocumentStatus.READY
 
@@ -401,13 +401,13 @@ async def test_normal_text_only_ingestion_is_unaffected(tmp_path: Path) -> None:
     async with async_session_factory() as session:
         service = create_ingestion_service(session, tmp_path / "storage")
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Plain Text",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         assert document.status == DocumentStatus.READY
 

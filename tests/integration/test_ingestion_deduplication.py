@@ -50,14 +50,14 @@ The results are useful for future research.
             file_storage=file_storage,
         )
         logical_document_id = uuid4()
-        first_document = await service.ingest_file(
+        first_document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Duplicate Test",
             document_type="research_paper",
             source="integration-test",
             logical_document_id=logical_document_id,
-        )
+        )).document
 
         await session.commit()
 
@@ -96,14 +96,14 @@ The results are useful for future research.
         mapping_count = mapping_count_result.scalar_one()
 
         # Ingest exactly the same file again.
-        second_document = await service.ingest_file(
+        second_document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Duplicate Test",
             document_type="research_paper",
             source="integration-test",
             logical_document_id=logical_document_id,
-        )
+        )).document
 
         await session.commit()
 

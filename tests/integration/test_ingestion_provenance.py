@@ -54,13 +54,13 @@ The results are useful for future research.
             file_storage=file_storage,
         )
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=MarkdownLoader(),
             title="Provenance Test",
             document_type="research_paper",
             source="integration-test",
-        )
+        )).document
 
         await session.commit()
 

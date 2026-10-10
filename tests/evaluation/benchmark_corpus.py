@@ -107,7 +107,7 @@ async def ensure_benchmark_corpus(
                 f"Benchmark fixture does not exist: {document_path}"
             )
 
-        document = await service.ingest_file(
+        document = (await service.ingest_file(
             path=document_path,
             loader=DocxLoader(),
             title=title,
@@ -115,7 +115,7 @@ async def ensure_benchmark_corpus(
             logical_document_id=logical_document_id,
             source=BENCHMARK_CORPUS_SOURCE,
             original_filename=filename,
-        )
+        )).document
 
         documents[title] = document
 

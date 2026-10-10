@@ -1,6 +1,6 @@
-"""Orchestrates the whole document ingestion pipeline: loading -> content
-hashing/versioning -> physical file storage -> structural extraction ->
-sectioning -> semantic shredding -> size-guarded chunking -> embedding ->
+"""Orchestrates the whole document ingestion pipeline: loading -> global
+duplicate-content detection -> shared-blob storage -> structural extraction
+-> sectioning -> semantic shredding -> size-guarded chunking -> embedding ->
 persistence -> lifecycle status transitions.
 
 This is the single entry point both `POST /documents` (new upload) and
@@ -8,13 +8,13 @@ This is the single entry point both `POST /documents` (new upload) and
 one ingestion code path, not two. It owns transaction boundaries and
 failure-recovery (marking a version FAILED with the real exception message)
 but delegates every individual step (structure extraction, chunking,
-embedding, storage) to its own dedicated module.
+embedding, blob storage) to its own dedicated module.
 """
 
-import hashlib
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,17 +23,27 @@ from app.core.repositories.document import DocumentRepository
 from app.core.repositories.stored_file import StoredFileRepository
 from app.core.services.document import DocumentService
 from app.embeddings.provider import EmbeddingProvider
+from app.ingestion.blob_service import BlobService
 from app.ingestion.chunk_service import ChunkService
 from app.ingestion.loaders.base import DocumentLoader
 from app.ingestion.loaders.resolver import resolve_loader_for_filename
-from app.ingestion.schemas import DocumentInput
+from app.ingestion.schemas import DocumentInput, IngestOutcome
 from app.ingestion.section_builder import SectionBuilder
 from app.ingestion.section_service import SectionService
 from app.ingestion.semantic_shredder import shred_semantically
 from app.ingestion.size_guard import apply_size_guard, fragment_table_units
 from app.ingestion.structure_extractor import StructureExtractor
 from app.storage.interface import FileStorage
-from app.storage.keys import build_storage_key
+
+
+@dataclass(frozen=True)
+class IngestionResult:
+    """What `IngestionService.ingest_file` actually did -- see
+    `app.ingestion.schemas.IngestOutcome` for what each outcome means."""
+
+    document: Document
+    outcome: IngestOutcome
+    updated_metadata_fields: list[str] = field(default_factory=list)
 
 
 class IngestionService:
@@ -50,6 +60,7 @@ class IngestionService:
         self.repository = DocumentRepository(session)
         self.stored_file_repository = StoredFileRepository(session)
         self.document_service = DocumentService(session)
+        self.blob_service = BlobService(session, file_storage=file_storage)
         self.structure_extractor = StructureExtractor()
         self.section_builder = SectionBuilder()
         self.section_service = SectionService(session)
@@ -68,57 +79,92 @@ class IngestionService:
         logical_document_id: UUID | None = None,
         source: str | None = None,
         original_filename: str | None = None,
-    ) -> Document:
+    ) -> IngestionResult:
+        """Ingest one uploaded file.
+
+        `logical_document_id` is the sole branch point between the two
+        dedup-aware service entry points: omitted, this is "upload as a new
+        document" (global duplicate-content detection, server-generated
+        logical ID on a true miss -- `DocumentService.
+        ingest_as_new_or_duplicate`); supplied, this is "upload a new
+        version of THIS existing document" (`DocumentService.
+        ingest_as_new_version`), which still checks for a global content
+        match before minting a new version. Either way, a matched duplicate
+        short-circuits here -- no blob write, no new version/section/chunk/
+        embedding, no reprocessing -- see `IngestionResult.outcome`.
+        """
+
         file_bytes = path.read_bytes()
         pages = loader.load(path)
 
         combined_content = "\n\n".join(page.content for page in pages)
 
-        document, created = await self.document_service.ingest_document(
-            DocumentInput(
-                title=title,
-                source=source,
-                document_type=document_type,
-                content=combined_content,
-            ),
-            logical_document_id=logical_document_id,
+        document_input = DocumentInput(
+            title=title,
+            source=source,
+            document_type=document_type,
+            content=combined_content,
         )
 
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
+        if logical_document_id is None:
+            document, match = await self.document_service.ingest_as_new_or_duplicate(
+                document_input,
+            )
+            non_duplicate_outcome = IngestOutcome.CREATED
+        else:
+            document, match = await self.document_service.ingest_as_new_version(
+                logical_document_id,
+                document_input,
+            )
+            non_duplicate_outcome = IngestOutcome.NEW_VERSION
 
-        # Idempotency short-circuit: DocumentService.ingest_document already
-        # found an existing Document row for this (logical_document_id,
-        # content_hash) pair and returned it unchanged (created=False). No
-        # new file write, no new StoredFile, no reprocessing -- the existing
-        # version (whatever its current status) is simply returned as-is.
-        if not created:
-            return document
+        # Idempotency / dedup short-circuit: a matching normalized-content
+        # version already exists (globally, per the outcome above) -- no
+        # new blob write, no new StoredFile, no reprocessing. This also
+        # covers repeated client retries of the exact same upload: the
+        # second attempt always re-resolves to this same existing row
+        # rather than creating another logical document, version, or chunk
+        # set.
+        if match.matched:
+            return IngestionResult(
+                document=document,
+                outcome=IngestOutcome.DUPLICATE,
+                updated_metadata_fields=match.updated_metadata_fields,
+            )
 
-        file_id = uuid4()
-
-        storage_key = build_storage_key(
-            logical_document_id=document.logical_document_id,
-            document_version_id=document.id,
-            file_id=file_id,
+        return await self._store_and_process_new_version(
+            document=document,
+            file_bytes=file_bytes,
+            pages=pages,
+            original_filename=original_filename or path.name,
+            outcome=non_duplicate_outcome,
         )
 
-        # Physical write happens BEFORE the StoredFile row is committed
-        # (below) -- if the DB commit then fails, the except block deletes
-        # this just-written file so no orphaned bytes remain with no DB
-        # record pointing at them.
-        await self.file_storage.store(
-            file_bytes,
-            storage_key,
-        )
+    async def _store_and_process_new_version(
+        self,
+        document: Document,
+        file_bytes: bytes,
+        pages: list,
+        original_filename: str,
+        outcome: IngestOutcome,
+    ) -> IngestionResult:
+        # Blob storage is fully decoupled from this version's identity:
+        # `BlobService` only ever returns a blob once its bytes are
+        # durably, atomically written and its row committed READY -- see
+        # that module for the concurrency/crash-recovery protocol. Several
+        # OTHER versions (this document's own earlier versions, or
+        # entirely different logical documents) may already reference --
+        # or come to reference later -- the exact same blob; this
+        # StoredFile row is only ever a reference to it, never an owner.
+        blob = await self.blob_service.get_or_create_ready_blob(file_bytes)
 
         try:
             stored_file = StoredFile(
-                id=file_id,
                 document_id=document.id,
-                original_filename=original_filename or path.name,
-                content_hash=file_hash,
-                size_bytes=len(file_bytes),
-                storage_key=storage_key,
+                original_filename=original_filename,
+                content_hash=blob.content_hash,
+                size_bytes=blob.size_bytes,
+                storage_key=blob.storage_key,
             )
 
             self.session.add(stored_file)
@@ -127,23 +173,23 @@ class IngestionService:
 
         except Exception:
             await self.session.rollback()
-
-            try:
-                await self.file_storage.delete(storage_key)
-            except Exception:
-                # Preserve the original DB/application failure.
-                pass
-
+            # Deliberately do NOT delete the blob here: it is a shared
+            # resource that may already be referenced by (or about to be
+            # referenced by) another version entirely -- only the
+            # reference-counted path in `DocumentDeletionService` may ever
+            # delete a blob's physical bytes.
             raise
 
         document = await self.document_service.mark_processing(document)
 
         await self.session.commit()
 
-        return await self._process_document(
+        document = await self._process_document(
             document=document,
             pages=pages,
         )
+
+        return IngestionResult(document=document, outcome=outcome)
 
     async def retry_document(
         self,

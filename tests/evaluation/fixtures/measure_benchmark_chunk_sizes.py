@@ -30,13 +30,13 @@ async def main() -> None:
         )
 
         for path in sorted(BENCHMARK_DIR.glob("*.docx")):
-            document = await service.ingest_file(
+            document = (await service.ingest_file(
                 path=path,
                 loader=DocxLoader(),
                 title=path.stem.replace("_", " ").title(),
                 document_type="benchmark",
                 source="benchmark-measurement",
-            )
+            )).document
 
             result = await session.execute(
                 select(DocumentChunk)

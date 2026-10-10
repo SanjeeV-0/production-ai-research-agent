@@ -64,6 +64,8 @@ from docx import Document as DocxDocument
 from fastapi.testclient import TestClient
 
 from app.core.models import Document, DocumentStatus
+from app.ingestion.schemas import IngestOutcome
+from app.ingestion.service import IngestionResult
 from app.main import app
 
 
@@ -150,6 +152,11 @@ class FakeIngestionService:
         self.ingest_calls: list[dict[str, object]] = []
         self.retry_calls: list[UUID] = []
         self.next_document: Document | None = None
+        # Outcome/metadata-fields reported alongside `next_document` -- mirrors
+        # the real IngestionService.ingest_file's IngestionResult contract.
+        # Defaults to CREATED since most fixtures configure a fresh upload.
+        self.next_outcome: IngestOutcome = IngestOutcome.CREATED
+        self.next_updated_metadata_fields: list[str] = []
         self.retry_result: Document | None = None
         self.raise_on_retry: Exception | None = None
         self.raise_on_ingest: Exception | None = None
@@ -163,7 +170,7 @@ class FakeIngestionService:
         logical_document_id=None,
         source=None,
         original_filename=None,
-    ) -> Document:
+    ) -> IngestionResult:
         self.ingest_calls.append(
             {
                 "title": title,
@@ -180,7 +187,11 @@ class FakeIngestionService:
             # `.failed_document` so the route can recover and report it.
             raise self.raise_on_ingest
         assert self.next_document is not None, "Fake not configured with next_document"
-        return self.next_document
+        return IngestionResult(
+            document=self.next_document,
+            outcome=self.next_outcome,
+            updated_metadata_fields=self.next_updated_metadata_fields,
+        )
 
     async def retry_document(self, document_id: UUID, loader=None) -> Document:
         self.retry_calls.append(document_id)
@@ -402,13 +413,16 @@ def test_upload_document_returns_created_version(client: TestClient) -> None:
     assert response.status_code == 201
 
     body = response.json()
-    assert_version_response_shape(body)
-    assert body["id"] == str(document.id)
-    assert body["logical_document_id"] == str(document.logical_document_id)
-    assert body["title"] == "My Paper"
-    assert body["document_type"] == "research_paper"
-    assert body["version_number"] == 1
-    assert body["status"] in {"PROCESSING", "READY"}
+    assert body["outcome"] == "created"
+    assert body["updated_metadata_fields"] == []
+    version = body["version"]
+    assert_version_response_shape(version)
+    assert version["id"] == str(document.id)
+    assert version["logical_document_id"] == str(document.logical_document_id)
+    assert version["title"] == "My Paper"
+    assert version["document_type"] == "research_paper"
+    assert version["version_number"] == 1
+    assert version["status"] in {"PROCESSING", "READY"}
 
     assert len(ingestion.ingest_calls) == 1
     assert ingestion.ingest_calls[0]["title"] == "My Paper"
@@ -459,8 +473,10 @@ def test_upload_accepts_docx_file_and_reaches_ready(client: TestClient) -> None:
     assert response.status_code == 201
 
     body = response.json()
-    assert_version_response_shape(body)
-    assert body["status"] == "READY"
+    assert body["outcome"] == "created"
+    version = body["version"]
+    assert_version_response_shape(version)
+    assert version["status"] == "READY"
 
     assert len(ingestion.ingest_calls) == 1
     assert ingestion.ingest_calls[0]["original_filename"] == "paper.docx"
@@ -475,10 +491,16 @@ def test_duplicate_upload_returns_same_version(client: TestClient) -> None:
     ingestion = FakeIngestionService()
     document = make_document(title="Repeated Paper", status=DocumentStatus.READY)
     ingestion.next_document = document
+    ingestion.next_outcome = IngestOutcome.CREATED
 
     override(get_ingestion_service, ingestion)
 
     first_response = upload_file(client, title="Repeated Paper")
+
+    # The second identical upload resolves to the same global
+    # normalized-content match -- a 'duplicate' outcome, not another
+    # 'created'.
+    ingestion.next_outcome = IngestOutcome.DUPLICATE
     second_response = upload_file(client, title="Repeated Paper")
 
     assert first_response.status_code == 201
@@ -487,9 +509,12 @@ def test_duplicate_upload_returns_same_version(client: TestClient) -> None:
     first_body = first_response.json()
     second_body = second_response.json()
 
+    assert first_body["outcome"] == "created"
+    assert second_body["outcome"] == "duplicate"
+
     # Content-hash idempotency: re-ingesting identical content returns the
     # same underlying version rather than creating a new one.
-    assert first_body["id"] == second_body["id"] == str(document.id)
+    assert first_body["version"]["id"] == second_body["version"]["id"] == str(document.id)
     assert len(ingestion.ingest_calls) == 2
 
 
@@ -507,6 +532,7 @@ def test_upload_with_explicit_logical_document_id(client: TestClient) -> None:
         title="New Version",
     )
     ingestion.next_document = document
+    ingestion.next_outcome = IngestOutcome.NEW_VERSION
 
     override(get_ingestion_service, ingestion)
 
@@ -519,8 +545,9 @@ def test_upload_with_explicit_logical_document_id(client: TestClient) -> None:
     assert response.status_code == 201
 
     body = response.json()
-    assert body["logical_document_id"] == str(logical_document_id)
-    assert body["version_number"] == 2
+    assert body["outcome"] == "new_version"
+    assert body["version"]["logical_document_id"] == str(logical_document_id)
+    assert body["version"]["version_number"] == 2
 
     assert ingestion.ingest_calls[0]["logical_document_id"] == logical_document_id
 
@@ -630,11 +657,13 @@ def test_upload_that_fails_ingestion_returns_failed_document(client: TestClient)
     assert response.status_code == 201
 
     body = response.json()
-    assert_version_response_shape(body)
-    assert body["status"] == "FAILED"
-    assert body["last_error"] == "Embedding generation timed out."
-    assert body["failed_at"] is not None
-    assert body["is_current"] is False
+    assert body["outcome"] == "created"
+    version = body["version"]
+    assert_version_response_shape(version)
+    assert version["status"] == "FAILED"
+    assert version["last_error"] == "Embedding generation timed out."
+    assert version["failed_at"] is not None
+    assert version["is_current"] is False
 
 
 def test_upload_that_raises_during_ingestion_still_returns_201(client: TestClient) -> None:
@@ -668,12 +697,14 @@ def test_upload_that_raises_during_ingestion_still_returns_201(client: TestClien
     assert response.status_code == 201
 
     body = response.json()
-    assert_version_response_shape(body)
-    assert body["id"] == str(failed_document.id)
-    assert body["status"] == "FAILED"
-    assert body["last_error"] == "Connection reset while embedding."
-    assert body["failed_at"] is not None
-    assert body["is_current"] is False
+    assert body["outcome"] == "created"
+    version = body["version"]
+    assert_version_response_shape(version)
+    assert version["id"] == str(failed_document.id)
+    assert version["status"] == "FAILED"
+    assert version["last_error"] == "Connection reset while embedding."
+    assert version["failed_at"] is not None
+    assert version["is_current"] is False
 
 
 def test_upload_that_raises_without_recoverable_document_is_not_fabricated(
@@ -1769,10 +1800,15 @@ def test_response_shape_exposes_only_the_explicit_contract(client: TestClient) -
 
     body = response.json()
 
-    # Exact key set: no SQLAlchemy relationship/internal attributes
-    # (pages, chunks, sections, _sa_instance_state, raw metadata, ...)
-    # leak through, and nothing from the explicit contract is missing.
-    assert set(body.keys()) == EXPECTED_VERSION_FIELDS
+    # Outer contract: outcome + nested version + metadata-update info, no
+    # more, no less.
+    assert set(body.keys()) == {"outcome", "version", "updated_metadata_fields"}
+
+    # Exact key set on the nested version: no SQLAlchemy relationship/
+    # internal attributes (pages, chunks, sections, _sa_instance_state, raw
+    # metadata, ...) leak through, and nothing from the explicit contract is
+    # missing.
+    assert set(body["version"].keys()) == EXPECTED_VERSION_FIELDS
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
+  DocumentUploadResult,
   DocumentVersion,
   LogicalDocumentSummary,
 } from '../types/document';
@@ -282,11 +283,38 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
     }
   };
 
-  // Handle successful upload
-  const handleUploaded = async (version: DocumentVersion) => {
+  // Handle a completed upload call -- outcome distinguishes a genuinely new
+  // document from a detected global content duplicate (no new document/
+  // version/chunks created) from a new revision of an explicitly targeted
+  // existing document. The duplicate case is also handled inline by
+  // UploadDocumentModal itself (it stays open with an explanation and a
+  // "View Existing Document" action), so this handler's job is just to
+  // keep the library list in sync and report what happened once the modal
+  // is done.
+  const handleUploaded = async (result: DocumentUploadResult) => {
     setActionError(null);
-    setActionSuccess(`"${version.title}" uploaded and submitted for ingestion (version ${version.version_number}).`);
+
+    if (result.outcome === 'duplicate') {
+      const updated = result.updated_metadata_fields;
+      setActionSuccess(
+        `Matching content already exists as "${result.version.title}" (version ${result.version.version_number}).` +
+          (updated.length > 0 ? ` Updated: ${updated.join(', ')}.` : '')
+      );
+    } else if (result.outcome === 'new_version') {
+      setActionSuccess(
+        `"${result.version.title}" uploaded as version ${result.version.version_number} and submitted for ingestion.`
+      );
+    } else {
+      setActionSuccess(
+        `"${result.version.title}" uploaded and submitted for ingestion (version ${result.version.version_number}).`
+      );
+    }
+
     await loadDocuments();
+  };
+
+  const handleViewExisting = (logicalDocumentId: string) => {
+    setSelectedDocId(logicalDocumentId);
   };
 
   return (
@@ -823,6 +851,7 @@ export const DocumentWorkspace: React.FC<DocumentWorkspaceProps> = ({
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onUploaded={handleUploaded}
+        onViewExisting={handleViewExisting}
         existingDocuments={documents}
       />
     </div>

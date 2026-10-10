@@ -1,12 +1,15 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, X, AlertTriangle, FileText } from 'lucide-react';
+import { UploadCloud, X, AlertTriangle, FileText, Copy, ArrowRight } from 'lucide-react';
 import { uploadDocument, DocumentApiUnavailableError } from '../api/documents';
-import { DocumentVersion, LogicalDocumentSummary } from '../types/document';
+import { DocumentUploadResult, LogicalDocumentSummary } from '../types/document';
 
 interface UploadDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUploaded: (version: DocumentVersion) => void;
+  onUploaded: (result: DocumentUploadResult) => void;
+  // Called when the upload resolved to an existing document (outcome
+  // 'duplicate') and the user chose to view it instead.
+  onViewExisting: (logicalDocumentId: string) => void;
   // Existing logical documents, offered as targets for "upload as a new
   // version of" an existing document. Keyed by logical_document_id, never
   // by a version id.
@@ -26,6 +29,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   isOpen,
   onClose,
   onUploaded,
+  onViewExisting,
   existingDocuments,
 }) => {
   const [file, setFile] = useState<File | null>(null);
@@ -38,6 +42,10 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   const [apiUnavailable, setApiUnavailable] = useState(false);
   const [uploadMode, setUploadMode] = useState<UploadMode>('new');
   const [targetLogicalDocumentId, setTargetLogicalDocumentId] = useState('');
+  // Set only on a 'duplicate' outcome -- the modal stays open and shows an
+  // explanation + a choice to view the existing document, rather than
+  // silently closing as if a new upload had succeeded.
+  const [duplicateResult, setDuplicateResult] = useState<DocumentUploadResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -52,6 +60,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     setIsUploading(false);
     setUploadMode('new');
     setTargetLogicalDocumentId('');
+    setDuplicateResult(null);
   };
 
   const handleClose = () => {
@@ -77,16 +86,26 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     setIsUploading(true);
     setError(null);
     setApiUnavailable(false);
+    setDuplicateResult(null);
 
     try {
-      const version = await uploadDocument(file, {
+      const result = await uploadDocument(file, {
         title: title.trim() || file.name,
         document_type: documentType,
         source: source.trim() || undefined,
         logical_document_id:
           uploadMode === 'new-version' ? targetLogicalDocumentId : undefined,
       });
-      onUploaded(version);
+
+      if (result.outcome === 'duplicate') {
+        // Do not close or report success as if a new upload happened --
+        // this content already exists. Let the user choose to view it.
+        setDuplicateResult(result);
+        onUploaded(result);
+        return;
+      }
+
+      onUploaded(result);
       reset();
       onClose();
     } catch (err: any) {
@@ -99,6 +118,14 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleViewExisting = () => {
+    if (!duplicateResult) return;
+    const logicalDocumentId = duplicateResult.version.logical_document_id;
+    reset();
+    onClose();
+    onViewExisting(logicalDocumentId);
   };
 
   return (
@@ -335,6 +362,30 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
               </div>
             </div>
 
+            {duplicateResult && (
+              <div className="warning-banner" style={{ marginTop: '1.25rem', marginBottom: 0 }}>
+                <Copy size={20} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <div className="warning-title">Matching Content Already Exists</div>
+                  <div className="warning-desc">
+                    This file's extracted text matches content already ingested as{' '}
+                    <strong>"{duplicateResult.version.title}"</strong> (version{' '}
+                    {duplicateResult.version.version_number}). No new document, version, or
+                    vector data was created.
+                    {duplicateResult.updated_metadata_fields.length > 0 && (
+                      <>
+                        {' '}
+                        The existing document's{' '}
+                        <strong>{duplicateResult.updated_metadata_fields.join(', ')}</strong>{' '}
+                        {duplicateResult.updated_metadata_fields.length === 1 ? 'was' : 'were'}{' '}
+                        updated from what you submitted.
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div
                 className={apiUnavailable ? 'warning-banner' : 'error-banner'}
@@ -356,6 +407,17 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
           </div>
 
           <div className="modal-footer">
+            {duplicateResult ? (
+              <>
+                <button type="button" className="btn-secondary" onClick={handleClose}>
+                  Close
+                </button>
+                <button type="button" className="btn-primary" onClick={handleViewExisting}>
+                  View Existing Document <ArrowRight size={14} />
+                </button>
+              </>
+            ) : (
+            <>
             <button type="button" className="btn-secondary" onClick={handleClose} disabled={isUploading}>
               Cancel
             </button>
@@ -380,6 +442,8 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                 </>
               )}
             </button>
+            </>
+            )}
           </div>
         </form>
       </div>
